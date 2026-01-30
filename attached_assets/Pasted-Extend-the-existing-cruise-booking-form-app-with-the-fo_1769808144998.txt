@@ -1,0 +1,62 @@
+Extend the existing cruise booking form app with the following new features and entities. Keep the same tech stack (React + Node/Express + database) and maintain mobile-responsive, clean UI.
+New core entity: Cruise
+
+Admin can create, edit, list, and delete Cruises.
+Each Cruise has:
+Name, optional dates/description.
+One selected Form Template (from existing templates).
+Generated unique shareable link (e.g., /fill/cruise/:cruiseId).
+
+Public form link now points to a specific Cruise and uses its associated Template.
+
+New form step type: Multi-choice with quantity & price
+
+In the Form Builder, add a new step type: "Multi-choice with Quantity".
+Admin configures:
+Question/header.
+List of choices (buttons), each with:
+Label (e.g., "Small Shirt", "Medium Shirt", "No thanks").
+Price per unit (number, can be 0).
+Optional initial quantity limit (stock cap).
+
+User view:
+Buttons displayed horizontally/vertically.
+For each choice (except "No thanks" style), show + / - quantity selector (default 0).
+"No thanks" or similar can be a simple button with quantity 0.
+Next/Back as before.
+
+
+On submission: Store individual answers + aggregate quantities per choice across all submissions for that Cruise.
+
+Admin Dashboard – Cruises page (main overview)
+
+List all Cruises with summary cards:
+Cruise name, template name, signup count, submission notifications badge.
+
+Click into Cruise detail view:
+Table of quantity items: Auto-generated rows for every quantity-enabled choice across the template.
+Columns: Item label, price, current total quantity ordered, limit (editable field), remaining stock.
+If limit reached (total ≥ limit), automatically disable that choice in the live form for new users.
+
+List of submitted clients:
+Name, phone (required field – make phone number mandatory in all templates or enforce globally).
+Quick view of their full form answers.
+Count of total signups.
+
+New submission notifications (simple badge or list).
+
+
+Admin navigation
+
+Separate clear sections/tabs:
+Cruises (main overview + management as above).
+Form Templates (existing builder + CRUD + duplicate).
+
+
+Data updates
+
+Submissions now linked to specific Cruise ID.
+Aggregated totals computed and stored/updated on each submission.
+Phone number field required globally (add validation).
+
+Prioritize the Cruises dashboard and new quantity step type first. Keep the graph-based builder intact and simply add the new step type to it
