@@ -56,7 +56,7 @@ export default function Landing() {
           </div>
 
           {isLoading ? (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="flex flex-col gap-4 max-w-xl mx-auto">
               {[1, 2, 3].map((i) => (
                 <Card key={i}>
                   <CardHeader>
@@ -70,7 +70,7 @@ export default function Landing() {
               ))}
             </div>
           ) : cruises && cruises.length > 0 ? (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="flex flex-col gap-4 max-w-xl mx-auto">
               {cruises.map((cruise) => (
                 <Card key={cruise.id} className="hover-elevate flex flex-col" data-testid={`card-cruise-${cruise.id}`}>
                   <CardHeader className="flex-1">
