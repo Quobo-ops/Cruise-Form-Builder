@@ -1,12 +1,23 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, jsonb, boolean, integer, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Choice with quantity configuration
+export const quantityChoiceSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  price: z.number().min(0).default(0),
+  limit: z.number().min(0).nullable().optional(),
+  isNoThanks: z.boolean().optional().default(false),
+});
+
+export type QuantityChoice = z.infer<typeof quantityChoiceSchema>;
 
 // Step types for the form builder
 export const stepSchema = z.object({
   id: z.string(),
-  type: z.enum(["choice", "text"]),
+  type: z.enum(["choice", "text", "quantity"]),
   question: z.string(),
   placeholder: z.string().optional(),
   choices: z.array(z.object({
@@ -14,6 +25,7 @@ export const stepSchema = z.object({
     label: z.string(),
     nextStepId: z.string().nullable(),
   })).optional(),
+  quantityChoices: z.array(quantityChoiceSchema).optional(),
   nextStepId: z.string().nullable().optional(),
 });
 
@@ -61,11 +73,48 @@ export const insertTemplateSchema = createInsertSchema(templates).omit({
 export type InsertTemplate = z.infer<typeof insertTemplateSchema>;
 export type Template = typeof templates.$inferSelect;
 
-// Submissions table
+// Cruises table
+export const cruises = pgTable("cruises", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  templateId: varchar("template_id").notNull().references(() => templates.id),
+  shareId: varchar("share_id").unique().notNull(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCruiseSchema = createInsertSchema(cruises).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCruise = z.infer<typeof insertCruiseSchema>;
+export type Cruise = typeof cruises.$inferSelect;
+
+// Quantity answer schema
+export const quantityAnswerSchema = z.object({
+  choiceId: z.string(),
+  label: z.string(),
+  quantity: z.number().min(0),
+  price: z.number().min(0),
+});
+
+export type QuantityAnswer = z.infer<typeof quantityAnswerSchema>;
+
+// Submissions table - now linked to cruises
 export const submissions = pgTable("submissions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   templateId: varchar("template_id").notNull().references(() => templates.id),
-  answers: jsonb("answers").notNull().$type<Record<string, string>>(),
+  cruiseId: varchar("cruise_id").references(() => cruises.id),
+  answers: jsonb("answers").notNull().$type<Record<string, string | QuantityAnswer[]>>(),
+  customerName: text("customer_name"),
+  customerPhone: text("customer_phone"),
+  isViewed: boolean("is_viewed").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -76,3 +125,24 @@ export const insertSubmissionSchema = createInsertSchema(submissions).omit({
 
 export type InsertSubmission = z.infer<typeof insertSubmissionSchema>;
 export type Submission = typeof submissions.$inferSelect;
+
+// Cruise inventory tracking table
+export const cruiseInventory = pgTable("cruise_inventory", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  cruiseId: varchar("cruise_id").notNull().references(() => cruises.id),
+  stepId: varchar("step_id").notNull(),
+  choiceId: varchar("choice_id").notNull(),
+  choiceLabel: text("choice_label").notNull(),
+  price: numeric("price", { precision: 10, scale: 2 }).notNull().default("0"),
+  totalOrdered: integer("total_ordered").notNull().default(0),
+  stockLimit: integer("stock_limit"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCruiseInventorySchema = createInsertSchema(cruiseInventory).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertCruiseInventory = z.infer<typeof insertCruiseInventorySchema>;
+export type CruiseInventory = typeof cruiseInventory.$inferSelect;

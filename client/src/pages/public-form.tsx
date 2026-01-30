@@ -4,33 +4,62 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Ship, ArrowRight, ChevronLeft, Check, Loader2, Anchor } from "lucide-react";
+import { Ship, ArrowRight, ChevronLeft, Check, Loader2, Anchor, Minus, Plus, DollarSign, Phone } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiRequest } from "@/lib/queryClient";
-import type { Template, Step } from "@shared/schema";
+import type { Template, Step, Cruise, QuantityAnswer } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 
+type InventoryStatus = {
+  stepId: string;
+  choiceId: string;
+  remaining: number | null;
+  isSoldOut: boolean;
+};
+
+type FormResponse = Template & {
+  cruise?: Cruise;
+  inventory?: InventoryStatus[];
+};
+
 export default function PublicForm() {
-  const { shareId } = useParams<{ shareId: string }>();
+  const { shareId, cruiseId } = useParams<{ shareId?: string; cruiseId?: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   
   const [currentStepId, setCurrentStepId] = useState<string | null>(null);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string | QuantityAnswer[]>>({});
   const [inputValue, setInputValue] = useState("");
+  const [quantitySelections, setQuantitySelections] = useState<Record<string, number>>({});
   const [history, setHistory] = useState<string[]>([]);
   const [isReview, setIsReview] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [showPhoneInput, setShowPhoneInput] = useState(false);
 
-  const { data: template, isLoading, error } = useQuery<Template>({
-    queryKey: ["/api/forms", shareId],
+  const formId = shareId || cruiseId;
+
+  const { data: formData, isLoading, error } = useQuery<FormResponse>({
+    queryKey: ["/api/forms", formId],
+    enabled: !!formId,
   });
+
+  const template = formData;
+  const cruise = formData?.cruise;
+  const inventory = formData?.inventory || [];
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("POST", `/api/forms/${shareId}/submit`, { answers });
+      return await apiRequest("POST", `/api/forms/${formId}/submit`, { 
+        answers,
+        customerName,
+        customerPhone,
+      });
     },
     onSuccess: () => {
       setIsSubmitted(true);
@@ -39,10 +68,10 @@ export default function PublicForm() {
         description: "Thank you for your submission.",
       });
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: "Submission failed",
-        description: "Please try again.",
+        description: error?.message || "Please try again.",
         variant: "destructive",
       });
     },
@@ -63,8 +92,23 @@ export default function PublicForm() {
     return Math.round((answeredSteps / totalSteps) * 100);
   }, [graph, answers]);
 
+  const getChoiceRemaining = (stepId: string, choiceId: string): number | null => {
+    const item = inventory.find(i => i.stepId === stepId && i.choiceId === choiceId);
+    return item?.remaining ?? null;
+  };
+
+  const isChoiceSoldOut = (stepId: string, choiceId: string): boolean => {
+    const item = inventory.find(i => i.stepId === stepId && i.choiceId === choiceId);
+    return item?.isSoldOut ?? false;
+  };
+
   const handleTextSubmit = () => {
     if (!currentStep || !inputValue.trim()) return;
+    
+    // Store name from first step if it looks like a name question
+    if (currentStep.question.toLowerCase().includes("name") && !customerName) {
+      setCustomerName(inputValue);
+    }
     
     const newAnswers = { ...answers, [currentStep.id]: inputValue };
     setAnswers(newAnswers);
@@ -74,7 +118,8 @@ export default function PublicForm() {
     if (currentStep.nextStepId && graph?.steps[currentStep.nextStepId]) {
       setCurrentStepId(currentStep.nextStepId);
     } else {
-      setIsReview(true);
+      // Show phone input before review
+      setShowPhoneInput(true);
     }
   };
 
@@ -88,21 +133,95 @@ export default function PublicForm() {
     if (choice.nextStepId && graph?.steps[choice.nextStepId]) {
       setCurrentStepId(choice.nextStepId);
     } else {
-      setIsReview(true);
+      setShowPhoneInput(true);
     }
   };
 
+  const handleQuantityChange = (choiceId: string, delta: number) => {
+    setQuantitySelections(prev => {
+      const current = prev[choiceId] || 0;
+      const newValue = Math.max(0, current + delta);
+      return { ...prev, [choiceId]: newValue };
+    });
+  };
+
+  const handleQuantitySubmit = () => {
+    if (!currentStep || currentStep.type !== "quantity" || !currentStep.quantityChoices) return;
+
+    // Filter out "no thanks" options for the main answer list
+    const quantityAnswers: QuantityAnswer[] = currentStep.quantityChoices
+      .filter(choice => !choice.isNoThanks)
+      .map(choice => ({
+        choiceId: choice.id,
+        label: choice.label,
+        quantity: quantitySelections[choice.id] || 0,
+        price: choice.price || 0,
+      }));
+
+    // Validate stock limits before proceeding
+    for (const qa of quantityAnswers) {
+      if (qa.quantity > 0) {
+        const remaining = getChoiceRemaining(currentStep.id, qa.choiceId);
+        if (remaining !== null && qa.quantity > remaining) {
+          toast({
+            title: "Not enough stock",
+            description: `Only ${remaining} of "${qa.label}" available.`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+    }
+
+    const newAnswers = { ...answers, [currentStep.id]: quantityAnswers };
+    setAnswers(newAnswers);
+    setHistory([...history, currentStep.id]);
+    setQuantitySelections({});
+
+    if (currentStep.nextStepId && graph?.steps[currentStep.nextStepId]) {
+      setCurrentStepId(currentStep.nextStepId);
+    } else {
+      setShowPhoneInput(true);
+    }
+  };
+
+  const handlePhoneSubmit = () => {
+    if (!customerPhone.trim()) {
+      toast({
+        title: "Phone number required",
+        description: "Please enter your phone number to continue.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setShowPhoneInput(false);
+    setIsReview(true);
+  };
+
   const handleBack = () => {
-    if (isReview) {
+    if (showPhoneInput) {
+      setShowPhoneInput(false);
       const lastStepId = history[history.length - 1];
       if (lastStepId) {
-        setIsReview(false);
         setCurrentStepId(lastStepId);
         const step = graph?.steps[lastStepId];
         if (step?.type === "text") {
-          setInputValue(answers[lastStepId] || "");
+          setInputValue(answers[lastStepId] as string || "");
+        } else if (step?.type === "quantity") {
+          const qa = answers[lastStepId] as QuantityAnswer[];
+          if (qa) {
+            const selections: Record<string, number> = {};
+            qa.forEach(item => { selections[item.choiceId] = item.quantity; });
+            setQuantitySelections(selections);
+          }
         }
       }
+      return;
+    }
+
+    if (isReview) {
+      setIsReview(false);
+      setShowPhoneInput(true);
       return;
     }
 
@@ -130,6 +249,17 @@ export default function PublicForm() {
   };
 
   const handleSubmit = () => {
+    // Final validation before submit
+    if (!customerPhone.trim()) {
+      toast({
+        title: "Phone number required",
+        description: "Please provide your phone number.",
+        variant: "destructive",
+      });
+      setIsReview(false);
+      setShowPhoneInput(true);
+      return;
+    }
     submitMutation.mutate();
   };
 
@@ -138,19 +268,39 @@ export default function PublicForm() {
     if (stepIndex === -1) return;
     
     setIsReview(false);
+    setShowPhoneInput(false);
     setHistory(history.slice(0, stepIndex));
     setCurrentStepId(stepId);
     
     const step = graph?.steps[stepId];
     if (step?.type === "text") {
-      setInputValue(answers[stepId] || "");
+      setInputValue(answers[stepId] as string || "");
+    } else if (step?.type === "quantity") {
+      const qa = answers[stepId] as QuantityAnswer[];
+      if (qa) {
+        const selections: Record<string, number> = {};
+        qa.forEach(item => { selections[item.choiceId] = item.quantity; });
+        setQuantitySelections(selections);
+      }
     }
     
-    const newAnswers: Record<string, string> = {};
+    const newAnswers: Record<string, string | QuantityAnswer[]> = {};
     history.slice(0, stepIndex).forEach((id) => {
       if (answers[id]) newAnswers[id] = answers[id];
     });
     setAnswers(newAnswers);
+  };
+
+  const calculateTotal = () => {
+    let total = 0;
+    Object.values(answers).forEach(answer => {
+      if (Array.isArray(answer)) {
+        (answer as QuantityAnswer[]).forEach(qa => {
+          total += qa.quantity * qa.price;
+        });
+      }
+    });
+    return total;
   };
 
   if (isLoading) {
@@ -206,7 +356,7 @@ export default function PublicForm() {
             </p>
             <div className="flex items-center justify-center gap-2 text-muted-foreground">
               <Ship className="w-5 h-5" />
-              <span>{template.name}</span>
+              <span>{cruise?.name || template.name}</span>
             </div>
           </CardContent>
         </Card>
@@ -228,12 +378,55 @@ export default function PublicForm() {
             <div className="w-12 h-12 rounded-md bg-primary flex items-center justify-center mx-auto mb-3">
               <Ship className="w-7 h-7 text-primary-foreground" />
             </div>
-            <h1 className="text-xl font-bold text-foreground">{template.name}</h1>
+            <h1 className="text-xl font-bold text-foreground">{cruise?.name || template.name}</h1>
+            {cruise?.description && (
+              <p className="text-sm text-muted-foreground mt-1">{cruise.description}</p>
+            )}
           </div>
 
           <Progress value={progress} className="mb-6" />
 
-          {isReview ? (
+          {showPhoneInput ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Phone className="w-5 h-5" />
+                  Contact Information
+                </CardTitle>
+                <CardDescription>
+                  Please provide your phone number so we can reach you.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Phone Number *</Label>
+                  <Input
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    placeholder="+1 (555) 000-0000"
+                    type="tel"
+                    autoFocus
+                    data-testid="input-phone"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <Button variant="outline" onClick={handleBack} className="gap-2">
+                    <ChevronLeft className="w-4 h-4" />
+                    Back
+                  </Button>
+                  <Button
+                    className="flex-1 gap-2"
+                    onClick={handlePhoneSubmit}
+                    disabled={!customerPhone.trim()}
+                    data-testid="button-continue"
+                  >
+                    Continue
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : isReview ? (
             <Card>
               <CardHeader>
                 <CardTitle>Review Your Answers</CardTitle>
@@ -245,6 +438,7 @@ export default function PublicForm() {
                 {history.map((stepId) => {
                   const step = graph?.steps[stepId];
                   if (!step) return null;
+                  const answer = answers[stepId];
                   return (
                     <div
                       key={stepId}
@@ -253,10 +447,34 @@ export default function PublicForm() {
                       data-testid={`review-answer-${stepId}`}
                     >
                       <p className="text-sm text-muted-foreground mb-1">{step.question}</p>
-                      <p className="font-medium">{answers[stepId]}</p>
+                      {Array.isArray(answer) ? (
+                        <div className="space-y-1">
+                          {(answer as QuantityAnswer[]).filter(qa => qa.quantity > 0).map(qa => (
+                            <div key={qa.choiceId} className="flex justify-between text-sm">
+                              <span>{qa.label}</span>
+                              <span className="font-medium">{qa.quantity} x ${qa.price.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="font-medium">{answer as string}</p>
+                      )}
                     </div>
                   );
                 })}
+
+                <div className="p-4 bg-muted rounded-md">
+                  <p className="text-sm text-muted-foreground mb-1">Phone Number</p>
+                  <p className="font-medium">{customerPhone}</p>
+                </div>
+
+                {calculateTotal() > 0 && (
+                  <div className="p-4 bg-primary/10 rounded-md flex justify-between items-center">
+                    <span className="font-semibold">Total</span>
+                    <span className="text-xl font-bold">${calculateTotal().toFixed(2)}</span>
+                  </div>
+                )}
+
                 <div className="flex gap-3 pt-4">
                   <Button variant="outline" onClick={handleBack} className="gap-2">
                     <ChevronLeft className="w-4 h-4" />
@@ -314,7 +532,7 @@ export default function PublicForm() {
                       </Button>
                     </div>
                   </>
-                ) : (
+                ) : currentStep.type === "choice" ? (
                   <>
                     <div className="space-y-2">
                       {currentStep.choices?.map((choice) => (
@@ -336,7 +554,95 @@ export default function PublicForm() {
                       </Button>
                     )}
                   </>
-                )}
+                ) : currentStep.type === "quantity" ? (
+                  <>
+                    <div className="space-y-3">
+                      {currentStep.quantityChoices?.map((choice) => {
+                        const remaining = getChoiceRemaining(currentStep.id, choice.id);
+                        const soldOut = isChoiceSoldOut(currentStep.id, choice.id);
+                        const currentQty = quantitySelections[choice.id] || 0;
+                        const maxQty = remaining !== null ? Math.min(remaining, 99) : 99;
+
+                        if (choice.isNoThanks) {
+                          return (
+                            <Button
+                              key={choice.id}
+                              variant="outline"
+                              className="w-full justify-center h-auto py-3 px-4"
+                              onClick={handleQuantitySubmit}
+                              data-testid={`button-no-thanks-${choice.id}`}
+                            >
+                              {choice.label}
+                            </Button>
+                          );
+                        }
+
+                        return (
+                          <div 
+                            key={choice.id} 
+                            className={`p-4 border rounded-md ${soldOut ? "opacity-50" : ""}`}
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <div className="flex-1">
+                                <p className="font-medium">{choice.label}</p>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                  <DollarSign className="w-3 h-3" />
+                                  ${(choice.price || 0).toFixed(2)} each
+                                </div>
+                              </div>
+                              {soldOut ? (
+                                <Badge variant="destructive">Sold Out</Badge>
+                              ) : remaining !== null && (
+                                <Badge variant="outline">{remaining} left</Badge>
+                              )}
+                            </div>
+                            {!soldOut && (
+                              <div className="flex items-center justify-center gap-4">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={() => handleQuantityChange(choice.id, -1)}
+                                  disabled={currentQty === 0}
+                                  data-testid={`button-minus-${choice.id}`}
+                                >
+                                  <Minus className="w-4 h-4" />
+                                </Button>
+                                <span className="text-2xl font-bold w-12 text-center">
+                                  {currentQty}
+                                </span>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={() => handleQuantityChange(choice.id, 1)}
+                                  disabled={currentQty >= maxQty}
+                                  data-testid={`button-plus-${choice.id}`}
+                                >
+                                  <Plus className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex gap-3">
+                      {history.length > 0 && (
+                        <Button variant="outline" onClick={handleBack} className="gap-2">
+                          <ChevronLeft className="w-4 h-4" />
+                          Back
+                        </Button>
+                      )}
+                      <Button
+                        className="flex-1 gap-2"
+                        onClick={handleQuantitySubmit}
+                        data-testid="button-quantity-next"
+                      >
+                        Next
+                        <ArrowRight className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </>
+                ) : null}
               </CardContent>
             </Card>
           ) : (

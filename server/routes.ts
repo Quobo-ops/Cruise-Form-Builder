@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import { randomBytes } from "crypto";
 import bcrypt from "bcrypt";
 import { z } from "zod";
-import { insertTemplateSchema, insertSubmissionSchema, graphSchema } from "@shared/schema";
+import { insertTemplateSchema, insertSubmissionSchema, graphSchema, quantityAnswerSchema } from "@shared/schema";
 
 declare module "express-session" {
   interface SessionData {
@@ -40,8 +40,34 @@ const templateUpdateSchema = z.object({
   shareId: z.string().nullable().optional(),
 });
 
+const cruiseCreateSchema = z.object({
+  name: z.string().min(1, "Name required"),
+  description: z.string().nullable().optional(),
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
+  templateId: z.string().min(1, "Template required"),
+  isActive: z.boolean().optional().default(true),
+});
+
+const cruiseUpdateSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().nullable().optional(),
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
+  templateId: z.string().optional(),
+  isActive: z.boolean().optional(),
+});
+
+const inventoryLimitUpdateSchema = z.object({
+  stepId: z.string(),
+  choiceId: z.string(),
+  limit: z.number().nullable(),
+});
+
 const submissionSchema = z.object({
-  answers: z.record(z.string(), z.string()),
+  answers: z.record(z.string(), z.union([z.string(), z.array(quantityAnswerSchema)])),
+  customerName: z.string().optional(),
+  customerPhone: z.string().min(1, "Phone number is required"),
 });
 
 export async function registerRoutes(
@@ -238,9 +264,202 @@ export async function registerRoutes(
     }
   });
 
-  // Public form routes (no auth required)
+  // Cruise routes (protected)
+  app.get("/api/cruises", requireAuth, async (req, res) => {
+    try {
+      const cruiseList = await storage.getCruises();
+      // Add submission counts for each cruise
+      const cruisesWithCounts = await Promise.all(
+        cruiseList.map(async (cruise) => {
+          const submissionCount = await storage.getSubmissionCountByCruise(cruise.id);
+          const unviewedCount = await storage.getUnviewedSubmissionCount(cruise.id);
+          return {
+            ...cruise,
+            submissionCount,
+            unviewedCount,
+          };
+        })
+      );
+      res.json(cruisesWithCounts);
+    } catch (error) {
+      console.error("Get cruises error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/cruises/:id", requireAuth, async (req, res) => {
+    try {
+      const cruise = await storage.getCruise(req.params.id);
+      if (!cruise) {
+        return res.status(404).json({ error: "Cruise not found" });
+      }
+      const submissionCount = await storage.getSubmissionCountByCruise(cruise.id);
+      const unviewedCount = await storage.getUnviewedSubmissionCount(cruise.id);
+      res.json({ ...cruise, submissionCount, unviewedCount });
+    } catch (error) {
+      console.error("Get cruise error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/cruises", requireAuth, async (req, res) => {
+    try {
+      const parseResult = cruiseCreateSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: parseResult.error.errors[0].message });
+      }
+
+      const { name, description, startDate, endDate, templateId, isActive } = parseResult.data;
+      
+      // Verify template exists
+      const template = await storage.getTemplate(templateId);
+      if (!template) {
+        return res.status(400).json({ error: "Template not found" });
+      }
+
+      // Generate unique shareId
+      const shareId = randomBytes(8).toString("hex");
+
+      const cruise = await storage.createCruise({
+        name,
+        description: description || null,
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+        templateId,
+        shareId,
+        isActive: isActive !== false,
+      });
+
+      // Initialize inventory for quantity steps
+      if (template.graph?.steps) {
+        for (const [stepId, step] of Object.entries(template.graph.steps)) {
+          if (step.type === "quantity" && step.quantityChoices) {
+            for (const choice of step.quantityChoices) {
+              if (!choice.isNoThanks) {
+                await storage.upsertInventoryItem({
+                  cruiseId: cruise.id,
+                  stepId,
+                  choiceId: choice.id,
+                  choiceLabel: choice.label,
+                  price: String(choice.price || 0),
+                  totalOrdered: 0,
+                  stockLimit: choice.limit || null,
+                });
+              }
+            }
+          }
+        }
+      }
+
+      res.status(201).json(cruise);
+    } catch (error) {
+      console.error("Create cruise error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/cruises/:id", requireAuth, async (req, res) => {
+    try {
+      const parseResult = cruiseUpdateSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: parseResult.error.errors[0].message });
+      }
+
+      const { name, description, startDate, endDate, templateId, isActive } = parseResult.data;
+      
+      const cruise = await storage.updateCruise(req.params.id, {
+        ...(name !== undefined && { name }),
+        ...(description !== undefined && { description }),
+        ...(startDate !== undefined && { startDate: startDate ? new Date(startDate) : null }),
+        ...(endDate !== undefined && { endDate: endDate ? new Date(endDate) : null }),
+        ...(templateId !== undefined && { templateId }),
+        ...(isActive !== undefined && { isActive }),
+      });
+
+      if (!cruise) {
+        return res.status(404).json({ error: "Cruise not found" });
+      }
+      res.json(cruise);
+    } catch (error) {
+      console.error("Update cruise error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/cruises/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteCruise(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete cruise error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Cruise inventory routes
+  app.get("/api/cruises/:id/inventory", requireAuth, async (req, res) => {
+    try {
+      const inventory = await storage.getCruiseInventory(req.params.id);
+      res.json(inventory);
+    } catch (error) {
+      console.error("Get cruise inventory error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/cruises/:id/inventory/limit", requireAuth, async (req, res) => {
+    try {
+      const parseResult = inventoryLimitUpdateSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: parseResult.error.errors[0].message });
+      }
+
+      const { stepId, choiceId, limit } = parseResult.data;
+      await storage.updateInventoryLimit(req.params.id, stepId, choiceId, limit);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Update inventory limit error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Cruise submissions routes
+  app.get("/api/cruises/:id/submissions", requireAuth, async (req, res) => {
+    try {
+      const submissions = await storage.getSubmissionsByCruise(req.params.id);
+      // Mark as viewed
+      await storage.markSubmissionsViewed(req.params.id);
+      res.json(submissions);
+    } catch (error) {
+      console.error("Get cruise submissions error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Public form routes - now for cruises
   app.get("/api/forms/:shareId", async (req, res) => {
     try {
+      // First try to find a cruise with this shareId
+      const cruise = await storage.getCruiseByShareId(req.params.shareId);
+      if (cruise && cruise.isActive) {
+        const template = await storage.getTemplate(cruise.templateId);
+        if (template) {
+          // Get inventory for stock limit enforcement
+          const inventory = await storage.getCruiseInventory(cruise.id);
+          return res.json({ 
+            ...template, 
+            cruise,
+            inventory: inventory.map(item => ({
+              stepId: item.stepId,
+              choiceId: item.choiceId,
+              remaining: item.stockLimit ? Math.max(0, item.stockLimit - item.totalOrdered) : null,
+              isSoldOut: item.stockLimit ? item.totalOrdered >= item.stockLimit : false,
+            }))
+          });
+        }
+      }
+
+      // Fall back to template shareId (legacy support)
       const template = await storage.getTemplateByShareId(req.params.shareId);
       if (!template || !template.published) {
         return res.status(404).json({ error: "Form not found" });
@@ -254,9 +473,21 @@ export async function registerRoutes(
 
   app.post("/api/forms/:shareId/submit", async (req, res) => {
     try {
-      const template = await storage.getTemplateByShareId(req.params.shareId);
-      if (!template || !template.published) {
-        return res.status(404).json({ error: "Form not found" });
+      let templateId: string;
+      let cruiseId: string | null = null;
+
+      // Check if this is a cruise form
+      const cruise = await storage.getCruiseByShareId(req.params.shareId);
+      if (cruise && cruise.isActive) {
+        templateId = cruise.templateId;
+        cruiseId = cruise.id;
+      } else {
+        // Fall back to template shareId
+        const template = await storage.getTemplateByShareId(req.params.shareId);
+        if (!template || !template.published) {
+          return res.status(404).json({ error: "Form not found" });
+        }
+        templateId = template.id;
       }
 
       const parseResult = submissionSchema.safeParse(req.body);
@@ -264,10 +495,39 @@ export async function registerRoutes(
         return res.status(400).json({ error: parseResult.error.errors[0].message });
       }
 
-      const { answers } = parseResult.data;
+      const { answers, customerName, customerPhone } = parseResult.data;
+
+      // If this is a cruise form, update inventory totals
+      if (cruiseId) {
+        for (const [stepId, answer] of Object.entries(answers)) {
+          if (Array.isArray(answer)) {
+            for (const qa of answer) {
+              if (qa.quantity > 0) {
+                // Check stock limits
+                const inventoryItem = await storage.getInventoryItem(cruiseId, stepId, qa.choiceId);
+                if (inventoryItem?.stockLimit) {
+                  const remaining = inventoryItem.stockLimit - inventoryItem.totalOrdered;
+                  if (qa.quantity > remaining) {
+                    return res.status(400).json({ 
+                      error: `Not enough stock for ${qa.label}. Only ${remaining} remaining.` 
+                    });
+                  }
+                }
+                // Update totals
+                await storage.updateInventoryTotals(cruiseId, stepId, qa.choiceId, qa.quantity);
+              }
+            }
+          }
+        }
+      }
+
       const submission = await storage.createSubmission({
-        templateId: template.id,
+        templateId,
+        cruiseId,
         answers,
+        customerName: customerName || null,
+        customerPhone: customerPhone || null,
+        isViewed: false,
       });
 
       res.status(201).json(submission);

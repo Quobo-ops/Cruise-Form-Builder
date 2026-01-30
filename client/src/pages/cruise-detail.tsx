@@ -1,0 +1,554 @@
+import { useState } from "react";
+import { Link, useParams, useLocation } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { useToast } from "@/hooks/use-toast";
+import { 
+  Ship, ArrowLeft, Copy, ExternalLink, Users, Package, Edit, Loader2, Save, Phone, User
+} from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { Cruise, Template, CruiseInventory, Submission, QuantityAnswer } from "@shared/schema";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+type CruiseWithCounts = Cruise & {
+  submissionCount: number;
+  unviewedCount: number;
+};
+
+export default function CruiseDetail() {
+  const { id } = useParams<{ id: string }>();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editIsActive, setEditIsActive] = useState(true);
+  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
+  const [editingLimit, setEditingLimit] = useState<{ stepId: string; choiceId: string; value: string } | null>(null);
+
+  const { data: cruise, isLoading: cruiseLoading } = useQuery<CruiseWithCounts>({
+    queryKey: ["/api/cruises", id],
+  });
+
+  const { data: template } = useQuery<Template>({
+    queryKey: ["/api/templates", cruise?.templateId],
+    enabled: !!cruise?.templateId,
+  });
+
+  const { data: inventory } = useQuery<CruiseInventory[]>({
+    queryKey: ["/api/cruises", id, "inventory"],
+    enabled: !!id,
+  });
+
+  const { data: submissions } = useQuery<Submission[]>({
+    queryKey: ["/api/cruises", id, "submissions"],
+    enabled: !!id,
+  });
+
+  const updateCruiseMutation = useMutation({
+    mutationFn: async (data: { name: string; description: string; isActive: boolean }) => {
+      return await apiRequest("PATCH", `/api/cruises/${id}`, data);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/cruises", id] });
+      setIsEditing(false);
+      toast({
+        title: "Cruise updated",
+        description: "Your changes have been saved.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update cruise.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateLimitMutation = useMutation({
+    mutationFn: async (data: { stepId: string; choiceId: string; limit: number | null }) => {
+      return await apiRequest("PATCH", `/api/cruises/${id}/inventory/limit`, data);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/cruises", id, "inventory"] });
+      setEditingLimit(null);
+      toast({
+        title: "Limit updated",
+        description: "The stock limit has been updated.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update limit.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const copyShareLink = () => {
+    if (!cruise) return;
+    const url = `${window.location.origin}/form/${cruise.shareId}`;
+    navigator.clipboard.writeText(url);
+    toast({
+      title: "Link copied",
+      description: "The shareable link has been copied to your clipboard.",
+    });
+  };
+
+  const startEditing = () => {
+    if (cruise) {
+      setEditName(cruise.name);
+      setEditDescription(cruise.description || "");
+      setEditIsActive(cruise.isActive ?? true);
+      setIsEditing(true);
+    }
+  };
+
+  const saveEdit = () => {
+    updateCruiseMutation.mutate({
+      name: editName,
+      description: editDescription,
+      isActive: editIsActive,
+    });
+  };
+
+  const getStepQuestion = (stepId: string) => {
+    return template?.graph?.steps[stepId]?.question || stepId;
+  };
+
+  const formatPrice = (price: string | number) => {
+    const num = typeof price === 'string' ? parseFloat(price) : price;
+    return `$${num.toFixed(2)}`;
+  };
+
+  const getRemaining = (item: CruiseInventory) => {
+    if (item.stockLimit === null) return "Unlimited";
+    return Math.max(0, item.stockLimit - item.totalOrdered);
+  };
+
+  const isSoldOut = (item: CruiseInventory) => {
+    if (item.stockLimit === null) return false;
+    return item.totalOrdered >= item.stockLimit;
+  };
+
+  if (cruiseLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+          <div className="container mx-auto px-4 py-4">
+            <Skeleton className="h-10 w-48" />
+          </div>
+        </header>
+        <main className="container mx-auto px-4 py-8">
+          <div className="grid gap-6">
+            <Skeleton className="h-48" />
+            <Skeleton className="h-96" />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!cruise) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="w-full max-w-md text-center">
+          <CardContent className="py-12">
+            <Ship className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-foreground mb-2">Cruise Not Found</h2>
+            <p className="text-muted-foreground mb-6">
+              This cruise doesn't exist or has been deleted.
+            </p>
+            <Link href="/admin/cruises">
+              <Button>Back to Cruises</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-4">
+            <Link href="/admin/cruises" className="flex items-center gap-2 text-muted-foreground hover-elevate rounded-md px-2 py-1">
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Back</span>
+            </Link>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
+                <Ship className="w-5 h-5 text-primary-foreground" />
+              </div>
+              <span className="font-semibold text-lg">{cruise.name}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <ThemeToggle />
+            <Button variant="outline" onClick={copyShareLink} className="gap-2" data-testid="button-copy-link">
+              <Copy className="w-4 h-4" />
+              <span className="hidden sm:inline">Copy Link</span>
+            </Button>
+            <Button variant="outline" onClick={startEditing} className="gap-2" data-testid="button-edit-cruise">
+              <Edit className="w-4 h-4" />
+              <span className="hidden sm:inline">Edit</span>
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-4 py-6 space-y-6">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <CardTitle>{cruise.name}</CardTitle>
+                <CardDescription className="mt-1">
+                  {cruise.description || "No description"}
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                {cruise.isActive ? (
+                  <Badge variant="default" className="bg-green-600">Active</Badge>
+                ) : (
+                  <Badge variant="secondary">Inactive</Badge>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid sm:grid-cols-3 gap-4">
+              <div className="flex items-center gap-3 p-4 bg-muted rounded-md">
+                <Users className="w-8 h-8 text-primary" />
+                <div>
+                  <p className="text-2xl font-bold">{cruise.submissionCount}</p>
+                  <p className="text-sm text-muted-foreground">Total Signups</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-4 bg-muted rounded-md">
+                <Package className="w-8 h-8 text-primary" />
+                <div>
+                  <p className="text-2xl font-bold">{inventory?.length || 0}</p>
+                  <p className="text-sm text-muted-foreground">Tracked Items</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-4 bg-muted rounded-md">
+                <ExternalLink className="w-8 h-8 text-primary" />
+                <div>
+                  <p className="text-sm font-medium truncate">/form/{cruise.shareId}</p>
+                  <p className="text-sm text-muted-foreground">Public Link</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {inventory && inventory.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="w-5 h-5" />
+                Inventory Tracking
+              </CardTitle>
+              <CardDescription>
+                Track quantities and manage stock limits for items with quantity selection.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead>Price</TableHead>
+                    <TableHead className="text-center">Ordered</TableHead>
+                    <TableHead className="text-center">Limit</TableHead>
+                    <TableHead className="text-center">Remaining</TableHead>
+                    <TableHead className="text-center">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {inventory.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{item.choiceLabel}</p>
+                          <p className="text-xs text-muted-foreground truncate max-w-48">
+                            {getStepQuestion(item.stepId)}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>{formatPrice(item.price)}</TableCell>
+                      <TableCell className="text-center font-medium">{item.totalOrdered}</TableCell>
+                      <TableCell className="text-center">
+                        {editingLimit?.stepId === item.stepId && editingLimit?.choiceId === item.choiceId ? (
+                          <div className="flex items-center gap-2 justify-center">
+                            <Input
+                              type="number"
+                              min="0"
+                              value={editingLimit.value}
+                              onChange={(e) => setEditingLimit({ ...editingLimit, value: e.target.value })}
+                              className="w-20 h-8"
+                              data-testid={`input-limit-${item.choiceId}`}
+                            />
+                            <Button
+                              size="sm"
+                              onClick={() => updateLimitMutation.mutate({
+                                stepId: item.stepId,
+                                choiceId: item.choiceId,
+                                limit: editingLimit.value ? parseInt(editingLimit.value) : null,
+                              })}
+                              disabled={updateLimitMutation.isPending}
+                            >
+                              {updateLimitMutation.isPending ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Save className="w-3 h-3" />
+                              )}
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingLimit({
+                              stepId: item.stepId,
+                              choiceId: item.choiceId,
+                              value: item.stockLimit?.toString() || "",
+                            })}
+                            data-testid={`button-edit-limit-${item.choiceId}`}
+                          >
+                            {item.stockLimit ?? "Unlimited"}
+                          </Button>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {getRemaining(item)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {isSoldOut(item) ? (
+                          <Badge variant="destructive">Sold Out</Badge>
+                        ) : (
+                          <Badge variant="outline">Available</Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Submitted Clients
+            </CardTitle>
+            <CardDescription>
+              View all signups for this cruise.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {submissions && submissions.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Submitted</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {submissions.map((submission) => (
+                    <TableRow key={submission.id}>
+                      <TableCell className="font-medium">
+                        {submission.customerName || "Unknown"}
+                      </TableCell>
+                      <TableCell>
+                        {submission.customerPhone || "N/A"}
+                      </TableCell>
+                      <TableCell>
+                        {submission.createdAt ? new Date(submission.createdAt).toLocaleDateString() : "N/A"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedSubmission(submission)}
+                          data-testid={`button-view-submission-${submission.id}`}
+                        >
+                          View Details
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-8">
+                <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">No submissions yet.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </main>
+
+      <Dialog open={isEditing} onOpenChange={setIsEditing}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Cruise</DialogTitle>
+            <DialogDescription>
+              Update the cruise details.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                data-testid="input-edit-cruise-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                data-testid="input-edit-cruise-description"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={editIsActive}
+                onCheckedChange={setEditIsActive}
+                data-testid="switch-cruise-active"
+              />
+              <Label>Active (accepting new signups)</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditing(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={saveEdit}
+              disabled={!editName.trim() || updateCruiseMutation.isPending}
+              data-testid="button-save-cruise"
+            >
+              {updateCruiseMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : null}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Sheet open={!!selectedSubmission} onOpenChange={() => setSelectedSubmission(null)}>
+        <SheetContent className="w-full sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle>Submission Details</SheetTitle>
+            <SheetDescription>
+              View the full form answers for this submission.
+            </SheetDescription>
+          </SheetHeader>
+          {selectedSubmission && (
+            <ScrollArea className="h-[calc(100vh-120px)] mt-4">
+              <div className="space-y-6 pr-4">
+                <div className="flex items-center gap-4 p-4 bg-muted rounded-md">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <User className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">{selectedSubmission.customerName || "Unknown"}</p>
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                      <Phone className="w-3 h-3" />
+                      {selectedSubmission.customerPhone || "N/A"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="font-semibold">Form Answers</h4>
+                  {Object.entries(selectedSubmission.answers || {}).map(([stepId, answer]) => {
+                    const question = template?.graph?.steps[stepId]?.question || stepId;
+                    return (
+                      <div key={stepId} className="p-4 border rounded-md">
+                        <p className="text-sm text-muted-foreground mb-2">{question}</p>
+                        {Array.isArray(answer) ? (
+                          <div className="space-y-2">
+                            {(answer as QuantityAnswer[]).map((qa) => (
+                              qa.quantity > 0 && (
+                                <div key={qa.choiceId} className="flex justify-between items-center">
+                                  <span>{qa.label}</span>
+                                  <span className="font-medium">
+                                    {qa.quantity} x ${qa.price.toFixed(2)} = ${(qa.quantity * qa.price).toFixed(2)}
+                                  </span>
+                                </div>
+                              )
+                            ))}
+                            <div className="border-t pt-2 mt-2 flex justify-between font-semibold">
+                              <span>Subtotal</span>
+                              <span>
+                                ${(answer as QuantityAnswer[]).reduce((sum, qa) => sum + qa.quantity * qa.price, 0).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="font-medium">{answer as string}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="text-sm text-muted-foreground">
+                  Submitted on {selectedSubmission.createdAt ? new Date(selectedSubmission.createdAt).toLocaleString() : "N/A"}
+                </div>
+              </div>
+            </ScrollArea>
+          )}
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}

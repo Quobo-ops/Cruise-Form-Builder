@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Ship, ArrowLeft, ArrowRight, ChevronLeft, Edit } from "lucide-react";
+import { Ship, ArrowLeft, ArrowRight, ChevronLeft, Edit, Minus, Plus, DollarSign } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
-import type { Template, Step } from "@shared/schema";
+import type { Template, Step, QuantityAnswer } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function FormPreview() {
@@ -16,8 +17,9 @@ export default function FormPreview() {
   const { toast } = useToast();
   
   const [currentStepId, setCurrentStepId] = useState<string | null>(null);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string | QuantityAnswer[]>>({});
   const [inputValue, setInputValue] = useState("");
+  const [quantitySelections, setQuantitySelections] = useState<Record<string, number>>({});
   const [history, setHistory] = useState<string[]>([]);
   const [isReview, setIsReview] = useState(false);
 
@@ -32,29 +34,6 @@ export default function FormPreview() {
     const stepId = currentStepId || graph.rootStepId;
     return graph.steps[stepId] || null;
   }, [graph, currentStepId]);
-
-  const stepsPath = useMemo(() => {
-    if (!graph) return [];
-    const path: Step[] = [];
-    const visited = new Set<string>();
-    let current = graph.rootStepId;
-    
-    while (current && !visited.has(current)) {
-      visited.add(current);
-      const step = graph.steps[current];
-      if (step) {
-        path.push(step);
-        if (step.type === "text") {
-          current = step.nextStepId || "";
-        } else {
-          break;
-        }
-      } else {
-        break;
-      }
-    }
-    return path;
-  }, [graph]);
 
   const progress = useMemo(() => {
     if (!graph) return 0;
@@ -92,6 +71,36 @@ export default function FormPreview() {
     }
   };
 
+  const handleQuantityChange = (choiceId: string, delta: number) => {
+    setQuantitySelections(prev => {
+      const current = prev[choiceId] || 0;
+      const newValue = Math.max(0, current + delta);
+      return { ...prev, [choiceId]: newValue };
+    });
+  };
+
+  const handleQuantitySubmit = () => {
+    if (!currentStep || currentStep.type !== "quantity" || !currentStep.quantityChoices) return;
+
+    const quantityAnswers: QuantityAnswer[] = currentStep.quantityChoices.map(choice => ({
+      choiceId: choice.id,
+      label: choice.label,
+      quantity: quantitySelections[choice.id] || 0,
+      price: choice.price || 0,
+    }));
+
+    const newAnswers = { ...answers, [currentStep.id]: quantityAnswers };
+    setAnswers(newAnswers);
+    setHistory([...history, currentStep.id]);
+    setQuantitySelections({});
+
+    if (currentStep.nextStepId && graph?.steps[currentStep.nextStepId]) {
+      setCurrentStepId(currentStep.nextStepId);
+    } else {
+      setIsReview(true);
+    }
+  };
+
   const handleBack = () => {
     if (isReview) {
       const lastStepId = history[history.length - 1];
@@ -100,7 +109,14 @@ export default function FormPreview() {
         setCurrentStepId(lastStepId);
         const step = graph?.steps[lastStepId];
         if (step?.type === "text") {
-          setInputValue(answers[lastStepId] || "");
+          setInputValue(answers[lastStepId] as string || "");
+        } else if (step?.type === "quantity") {
+          const qa = answers[lastStepId] as QuantityAnswer[];
+          if (qa) {
+            const selections: Record<string, number> = {};
+            qa.forEach(item => { selections[item.choiceId] = item.quantity; });
+            setQuantitySelections(selections);
+          }
         }
       }
       return;
@@ -146,20 +162,40 @@ export default function FormPreview() {
     
     const step = graph?.steps[stepId];
     if (step?.type === "text") {
-      setInputValue(answers[stepId] || "");
+      setInputValue(answers[stepId] as string || "");
+    } else if (step?.type === "quantity") {
+      const qa = answers[stepId] as QuantityAnswer[];
+      if (qa) {
+        const selections: Record<string, number> = {};
+        qa.forEach(item => { selections[item.choiceId] = item.quantity; });
+        setQuantitySelections(selections);
+      }
     }
     
-    const newAnswers: Record<string, string> = {};
+    const newAnswers: Record<string, string | QuantityAnswer[]> = {};
     history.slice(0, stepIndex).forEach((id) => {
       if (answers[id]) newAnswers[id] = answers[id];
     });
     setAnswers(newAnswers);
   };
 
+  const calculateTotal = () => {
+    let total = 0;
+    Object.values(answers).forEach(answer => {
+      if (Array.isArray(answer)) {
+        (answer as QuantityAnswer[]).forEach(qa => {
+          total += qa.quantity * qa.price;
+        });
+      }
+    });
+    return total;
+  };
+
   const reset = () => {
     setCurrentStepId(null);
     setAnswers({});
     setInputValue("");
+    setQuantitySelections({});
     setHistory([]);
     setIsReview(false);
   };
@@ -220,6 +256,7 @@ export default function FormPreview() {
                 {history.map((stepId) => {
                   const step = graph?.steps[stepId];
                   if (!step) return null;
+                  const answer = answers[stepId];
                   return (
                     <div
                       key={stepId}
@@ -227,10 +264,29 @@ export default function FormPreview() {
                       onClick={() => handleEditAnswer(stepId)}
                     >
                       <p className="text-sm text-muted-foreground mb-1">{step.question}</p>
-                      <p className="font-medium">{answers[stepId]}</p>
+                      {Array.isArray(answer) ? (
+                        <div className="space-y-1">
+                          {(answer as QuantityAnswer[]).filter(qa => qa.quantity > 0).map(qa => (
+                            <div key={qa.choiceId} className="flex justify-between text-sm">
+                              <span>{qa.label}</span>
+                              <span className="font-medium">{qa.quantity} x ${qa.price.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="font-medium">{answer as string}</p>
+                      )}
                     </div>
                   );
                 })}
+
+                {calculateTotal() > 0 && (
+                  <div className="p-4 bg-primary/10 rounded-md flex justify-between items-center">
+                    <span className="font-semibold">Total</span>
+                    <span className="text-xl font-bold">${calculateTotal().toFixed(2)}</span>
+                  </div>
+                )}
+
                 <div className="flex gap-3 pt-4">
                   <Button variant="outline" onClick={handleBack} className="gap-2">
                     <ChevronLeft className="w-4 h-4" />
@@ -279,7 +335,7 @@ export default function FormPreview() {
                       </Button>
                     </div>
                   </>
-                ) : (
+                ) : currentStep.type === "choice" ? (
                   <>
                     <div className="space-y-2">
                       {currentStep.choices?.map((choice) => (
@@ -301,7 +357,85 @@ export default function FormPreview() {
                       </Button>
                     )}
                   </>
-                )}
+                ) : currentStep.type === "quantity" ? (
+                  <>
+                    <div className="space-y-3">
+                      {currentStep.quantityChoices?.map((choice) => {
+                        const currentQty = quantitySelections[choice.id] || 0;
+
+                        if (choice.isNoThanks) {
+                          return (
+                            <Button
+                              key={choice.id}
+                              variant="outline"
+                              className="w-full justify-center h-auto py-3 px-4"
+                              onClick={handleQuantitySubmit}
+                              data-testid={`button-no-thanks-${choice.id}`}
+                            >
+                              {choice.label}
+                            </Button>
+                          );
+                        }
+
+                        return (
+                          <div key={choice.id} className="p-4 border rounded-md">
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <div className="flex-1">
+                                <p className="font-medium">{choice.label}</p>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                  <DollarSign className="w-3 h-3" />
+                                  ${(choice.price || 0).toFixed(2)} each
+                                </div>
+                              </div>
+                              {choice.limit && (
+                                <Badge variant="outline">{choice.limit} max</Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-center gap-4">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => handleQuantityChange(choice.id, -1)}
+                                disabled={currentQty === 0}
+                                data-testid={`button-minus-${choice.id}`}
+                              >
+                                <Minus className="w-4 h-4" />
+                              </Button>
+                              <span className="text-2xl font-bold w-12 text-center">
+                                {currentQty}
+                              </span>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => handleQuantityChange(choice.id, 1)}
+                                disabled={choice.limit ? currentQty >= choice.limit : false}
+                                data-testid={`button-plus-${choice.id}`}
+                              >
+                                <Plus className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex gap-3">
+                      {history.length > 0 && (
+                        <Button variant="outline" onClick={handleBack} className="gap-2">
+                          <ChevronLeft className="w-4 h-4" />
+                          Back
+                        </Button>
+                      )}
+                      <Button
+                        className="flex-1 gap-2"
+                        onClick={handleQuantitySubmit}
+                        data-testid="button-quantity-next"
+                      >
+                        Next
+                        <ArrowRight className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </>
+                ) : null}
               </CardContent>
             </Card>
           ) : (
