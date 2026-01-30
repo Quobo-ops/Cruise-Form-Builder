@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function FormPreview() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const { isLoading: authLoading, isAuthenticated } = useAuth();
   
   const [currentStepId, setCurrentStepId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string | QuantityAnswer[]>>({});
@@ -25,6 +27,7 @@ export default function FormPreview() {
 
   const { data: template, isLoading } = useQuery<Template>({
     queryKey: ["/api/templates", id],
+    enabled: isAuthenticated,
   });
 
   const graph = template?.graph;
@@ -41,6 +44,18 @@ export default function FormPreview() {
     const answeredSteps = Object.keys(answers).length;
     return Math.round((answeredSteps / totalSteps) * 100);
   }, [graph, answers]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   const handleTextSubmit = () => {
     if (!currentStep || !inputValue.trim()) return;

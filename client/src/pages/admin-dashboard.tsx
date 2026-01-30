@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,7 @@ type CruiseWithCounts = Cruise & {
 export default function AdminDashboard() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
+  const { isLoading: authLoading, isAuthenticated } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [newTemplateName, setNewTemplateName] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -59,17 +61,22 @@ export default function AdminDashboard() {
   const [newCruiseName, setNewCruiseName] = useState("");
   const [newCruiseDescription, setNewCruiseDescription] = useState("");
   const [newCruiseTemplateId, setNewCruiseTemplateId] = useState("");
+  const [newCruiseStartDate, setNewCruiseStartDate] = useState("");
+  const [newCruiseEndDate, setNewCruiseEndDate] = useState("");
+  const [newCruisePublished, setNewCruisePublished] = useState(false);
 
   const activeTab = location.includes("/admin/templates") ? "templates" 
     : location.includes("/admin/cruises") ? "cruises" 
-    : "cruises"; // Default to cruises
+    : "cruises";
 
   const { data: templates, isLoading: templatesLoading } = useQuery<Template[]>({
     queryKey: ["/api/templates"],
+    enabled: isAuthenticated,
   });
 
   const { data: cruises, isLoading: cruisesLoading } = useQuery<CruiseWithCounts[]>({
     queryKey: ["/api/cruises"],
+    enabled: isAuthenticated,
   });
 
   const createTemplateMutation = useMutation({
@@ -113,7 +120,7 @@ export default function AdminDashboard() {
   });
 
   const createCruiseMutation = useMutation({
-    mutationFn: async (data: { name: string; description: string; templateId: string }) => {
+    mutationFn: async (data: { name: string; description: string; templateId: string; startDate?: string; endDate?: string; isPublished?: boolean }) => {
       return await apiRequest("POST", "/api/cruises", data);
     },
     onSuccess: async (response) => {
@@ -122,6 +129,9 @@ export default function AdminDashboard() {
       setNewCruiseName("");
       setNewCruiseDescription("");
       setNewCruiseTemplateId("");
+      setNewCruiseStartDate("");
+      setNewCruiseEndDate("");
+      setNewCruisePublished(false);
       const cruise = await response.json();
       toast({
         title: "Cruise created",
@@ -239,6 +249,18 @@ export default function AdminDashboard() {
     return templates?.find(t => t.id === templateId)?.name || "Unknown Template";
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
@@ -321,6 +343,26 @@ export default function AdminDashboard() {
                         data-testid="input-cruise-description"
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Start Date (optional)</Label>
+                        <Input
+                          type="date"
+                          value={newCruiseStartDate}
+                          onChange={(e) => setNewCruiseStartDate(e.target.value)}
+                          data-testid="input-cruise-start-date"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>End Date (optional)</Label>
+                        <Input
+                          type="date"
+                          value={newCruiseEndDate}
+                          onChange={(e) => setNewCruiseEndDate(e.target.value)}
+                          data-testid="input-cruise-end-date"
+                        />
+                      </div>
+                    </div>
                     <div className="space-y-2">
                       <Label>Form Template</Label>
                       <Select
@@ -339,6 +381,19 @@ export default function AdminDashboard() {
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="cruise-published"
+                        checked={newCruisePublished}
+                        onChange={(e) => setNewCruisePublished(e.target.checked)}
+                        className="h-4 w-4 rounded border-input"
+                        data-testid="checkbox-cruise-published"
+                      />
+                      <Label htmlFor="cruise-published" className="text-sm cursor-pointer">
+                        Published (visible on public landing page)
+                      </Label>
+                    </div>
                   </div>
                   <DialogFooter>
                     <Button
@@ -352,6 +407,9 @@ export default function AdminDashboard() {
                         name: newCruiseName,
                         description: newCruiseDescription,
                         templateId: newCruiseTemplateId,
+                        startDate: newCruiseStartDate || undefined,
+                        endDate: newCruiseEndDate || undefined,
+                        isPublished: newCruisePublished,
                       })}
                       disabled={!newCruiseName.trim() || !newCruiseTemplateId || createCruiseMutation.isPending}
                       data-testid="button-create-cruise-confirm"
@@ -446,15 +504,18 @@ export default function AdminDashboard() {
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-4 flex-wrap text-sm text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Users className="w-4 h-4" />
                           {cruise.submissionCount} signups
                         </div>
-                        {cruise.isActive ? (
-                          <Badge variant="default" className="bg-green-600">Active</Badge>
+                        {cruise.isPublished ? (
+                          <Badge variant="default" className="bg-green-600">Published</Badge>
                         ) : (
-                          <Badge variant="secondary">Inactive</Badge>
+                          <Badge variant="secondary">Draft</Badge>
+                        )}
+                        {!cruise.isActive && (
+                          <Badge variant="outline">Inactive</Badge>
                         )}
                       </div>
                     </CardContent>

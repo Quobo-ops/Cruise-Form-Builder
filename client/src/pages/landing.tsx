@@ -1,10 +1,31 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Ship, Anchor, Waves, ClipboardList, Settings, Share2 } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Ship, Anchor, Calendar, ArrowRight, Loader2 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { Cruise } from "@shared/schema";
 
 export default function Landing() {
+  const [, setLocation] = useLocation();
+
+  const { data: cruises, isLoading } = useQuery<Cruise[]>({
+    queryKey: ["/api/public/cruises"],
+  });
+
+  const formatDateRange = (startDate: Date | null, endDate: Date | null) => {
+    if (!startDate && !endDate) return null;
+    const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
+    if (startDate && endDate) {
+      return `${new Date(startDate).toLocaleDateString('en-US', options)} - ${new Date(endDate).toLocaleDateString('en-US', options)}`;
+    }
+    if (startDate) {
+      return `Starting ${new Date(startDate).toLocaleDateString('en-US', options)}`;
+    }
+    return null;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-primary/5">
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
@@ -15,100 +36,81 @@ export default function Landing() {
             </div>
             <span className="text-xl font-semibold text-foreground">CruiseBook</span>
           </Link>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Link href="/admin/login">
-              <Button variant="outline" data-testid="link-admin-login">
-                Admin Login
-              </Button>
-            </Link>
-          </div>
+          <ThemeToggle />
         </div>
       </header>
 
       <main>
-        <section className="container mx-auto px-4 py-16 md:py-24">
-          <div className="max-w-3xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-6">
+        <section className="container mx-auto px-4 py-12 md:py-16">
+          <div className="max-w-2xl mx-auto text-center mb-10">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-4">
               <Anchor className="w-4 h-4" />
-              <span className="text-sm font-medium">Cruise Line Booking Forms</span>
+              <span className="text-sm font-medium">Available Cruises</span>
             </div>
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6 leading-tight">
-              Create Dynamic Booking Forms for Your{" "}
-              <span className="text-primary">Cruise Line</span>
+            <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
+              Book Your Next Adventure
             </h1>
-            <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-              Build multi-step booking wizards with branching logic. Share via SMS links and collect customer information seamlessly on any device.
+            <p className="text-muted-foreground">
+              Browse our available cruises and complete your booking form in just a few minutes.
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-4">
-              <Link href="/admin/login">
-                <Button size="lg" className="gap-2" data-testid="button-get-started">
-                  <Settings className="w-5 h-5" />
-                  Get Started
-                </Button>
-              </Link>
-              <Button size="lg" variant="outline" className="gap-2" data-testid="button-learn-more">
-                <Waves className="w-5 h-5" />
-                Learn More
-              </Button>
+          </div>
+
+          {isLoading ? (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+              {[1, 2, 3].map((i) => (
+                <Card key={i}>
+                  <CardHeader>
+                    <Skeleton className="h-6 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </CardHeader>
+                  <CardContent>
+                    <Skeleton className="h-10 w-full" />
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          </div>
-        </section>
-
-        <section className="container mx-auto px-4 py-16">
-          <div className="grid md:grid-cols-3 gap-6">
-            <Card className="hover-elevate">
-              <CardContent className="p-6">
-                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center mb-4">
-                  <ClipboardList className="w-6 h-6 text-primary" />
+          ) : cruises && cruises.length > 0 ? (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+              {cruises.map((cruise) => (
+                <Card key={cruise.id} className="hover-elevate flex flex-col" data-testid={`card-cruise-${cruise.id}`}>
+                  <CardHeader className="flex-1">
+                    <CardTitle className="text-lg">{cruise.name}</CardTitle>
+                    {cruise.description && (
+                      <CardDescription className="line-clamp-2">{cruise.description}</CardDescription>
+                    )}
+                    {(cruise.startDate || cruise.endDate) && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
+                        <Calendar className="w-4 h-4" />
+                        <span>{formatDateRange(cruise.startDate, cruise.endDate)}</span>
+                      </div>
+                    )}
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      className="w-full gap-2"
+                      onClick={() => setLocation(`/form/${cruise.shareId}`)}
+                      data-testid={`button-book-${cruise.id}`}
+                    >
+                      Book Now
+                      <ArrowRight className="w-4 h-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card className="max-w-md mx-auto bg-muted/30">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                  <Ship className="w-8 h-8 text-muted-foreground" />
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Visual Form Builder</h3>
-                <p className="text-muted-foreground">
-                  Create multi-step wizards with our intuitive drag-and-drop builder. Add choices, text inputs, and branching logic.
+                <h3 className="text-lg font-semibold text-foreground mb-2">No cruises available</h3>
+                <p className="text-muted-foreground text-center">
+                  Check back soon for upcoming cruise opportunities.
                 </p>
               </CardContent>
             </Card>
-            <Card className="hover-elevate">
-              <CardContent className="p-6">
-                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center mb-4">
-                  <Share2 className="w-6 h-6 text-primary" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Shareable Links</h3>
-                <p className="text-muted-foreground">
-                  Generate unique links for each form template. Share via SMS for customers to complete on their mobile devices.
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="hover-elevate">
-              <CardContent className="p-6">
-                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center mb-4">
-                  <Ship className="w-6 h-6 text-primary" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Mobile Optimized</h3>
-                <p className="text-muted-foreground">
-                  Fully responsive forms that look great on any device. Perfect for customers booking on the go.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-
-        <section className="container mx-auto px-4 py-16">
-          <Card className="bg-primary text-primary-foreground">
-            <CardContent className="p-8 md:p-12 text-center">
-              <h2 className="text-2xl md:text-3xl font-bold mb-4">
-                Ready to streamline your cruise bookings?
-              </h2>
-              <p className="text-primary-foreground/80 mb-6 max-w-xl mx-auto">
-                Start creating professional booking forms in minutes. No coding required.
-              </p>
-              <Link href="/admin/login">
-                <Button size="lg" variant="secondary" data-testid="button-start-now">
-                  Start Building Now
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
+          )}
         </section>
       </main>
 
@@ -117,11 +119,11 @@ export default function Landing() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Ship className="w-5 h-5" />
-              <span className="text-sm">CruiseBook - Dynamic Booking Forms</span>
+              <span className="text-sm">CruiseBook</span>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Built for cruise line businesses
-            </p>
+            <Link href="/admin/login" className="text-sm text-muted-foreground hover:text-foreground">
+              Admin
+            </Link>
           </div>
         </div>
       </footer>

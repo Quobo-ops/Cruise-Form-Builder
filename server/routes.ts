@@ -47,6 +47,7 @@ const cruiseCreateSchema = z.object({
   endDate: z.string().nullable().optional(),
   templateId: z.string().min(1, "Template required"),
   isActive: z.boolean().optional().default(true),
+  isPublished: z.boolean().optional().default(false),
 });
 
 const cruiseUpdateSchema = z.object({
@@ -56,6 +57,7 @@ const cruiseUpdateSchema = z.object({
   endDate: z.string().nullable().optional(),
   templateId: z.string().optional(),
   isActive: z.boolean().optional(),
+  isPublished: z.boolean().optional(),
 });
 
 const inventoryLimitUpdateSchema = z.object({
@@ -139,6 +141,17 @@ export async function registerRoutes(
       }
       res.json({ id: user.id, username: user.username });
     } catch (error) {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Public routes for landing page
+  app.get("/api/public/cruises", async (req, res) => {
+    try {
+      const publishedCruises = await storage.getPublishedCruises();
+      res.json(publishedCruises);
+    } catch (error) {
+      console.error("Get published cruises error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -309,7 +322,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: parseResult.error.errors[0].message });
       }
 
-      const { name, description, startDate, endDate, templateId, isActive } = parseResult.data;
+      const { name, description, startDate, endDate, templateId, isActive, isPublished } = parseResult.data;
       
       // Verify template exists
       const template = await storage.getTemplate(templateId);
@@ -328,6 +341,7 @@ export async function registerRoutes(
         templateId,
         shareId,
         isActive: isActive !== false,
+        isPublished: isPublished || false,
       });
 
       // Initialize inventory for quantity steps
@@ -365,7 +379,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: parseResult.error.errors[0].message });
       }
 
-      const { name, description, startDate, endDate, templateId, isActive } = parseResult.data;
+      const { name, description, startDate, endDate, templateId, isActive, isPublished } = parseResult.data;
       
       const cruise = await storage.updateCruise(req.params.id, {
         ...(name !== undefined && { name }),
@@ -374,6 +388,7 @@ export async function registerRoutes(
         ...(endDate !== undefined && { endDate: endDate ? new Date(endDate) : null }),
         ...(templateId !== undefined && { templateId }),
         ...(isActive !== undefined && { isActive }),
+        ...(isPublished !== undefined && { isPublished }),
       });
 
       if (!cruise) {
@@ -441,7 +456,11 @@ export async function registerRoutes(
     try {
       // First try to find a cruise with this shareId
       const cruise = await storage.getCruiseByShareId(req.params.shareId);
-      if (cruise && cruise.isActive) {
+      if (cruise) {
+        // Check if cruise is published and active
+        if (!cruise.isPublished || !cruise.isActive) {
+          return res.status(404).json({ error: "This cruise is not currently available", notAvailable: true });
+        }
         const template = await storage.getTemplate(cruise.templateId);
         if (template) {
           // Get inventory for stock limit enforcement
@@ -478,9 +497,11 @@ export async function registerRoutes(
 
       // Check if this is a cruise form
       const cruise = await storage.getCruiseByShareId(req.params.shareId);
-      if (cruise && cruise.isActive) {
+      if (cruise && cruise.isActive && cruise.isPublished) {
         templateId = cruise.templateId;
         cruiseId = cruise.id;
+      } else if (cruise && (!cruise.isActive || !cruise.isPublished)) {
+        return res.status(404).json({ error: "This cruise is not currently available" });
       } else {
         // Fall back to template shareId
         const template = await storage.getTemplateByShareId(req.params.shareId);

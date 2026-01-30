@@ -83,6 +83,7 @@ export const cruises = pgTable("cruises", {
   templateId: varchar("template_id").notNull().references(() => templates.id),
   shareId: varchar("share_id").unique().notNull(),
   isActive: boolean("is_active").default(true),
+  isPublished: boolean("is_published").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

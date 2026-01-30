@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -50,35 +51,38 @@ export default function CruiseDetail() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { isLoading: authLoading, isAuthenticated } = useAuth();
   
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editIsActive, setEditIsActive] = useState(true);
+  const [editIsPublished, setEditIsPublished] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [editingLimit, setEditingLimit] = useState<{ stepId: string; choiceId: string; value: string } | null>(null);
 
   const { data: cruise, isLoading: cruiseLoading } = useQuery<CruiseWithCounts>({
     queryKey: ["/api/cruises", id],
+    enabled: isAuthenticated,
   });
 
   const { data: template } = useQuery<Template>({
     queryKey: ["/api/templates", cruise?.templateId],
-    enabled: !!cruise?.templateId,
+    enabled: !!cruise?.templateId && isAuthenticated,
   });
 
   const { data: inventory } = useQuery<CruiseInventory[]>({
     queryKey: ["/api/cruises", id, "inventory"],
-    enabled: !!id,
+    enabled: !!id && isAuthenticated,
   });
 
   const { data: submissions } = useQuery<Submission[]>({
     queryKey: ["/api/cruises", id, "submissions"],
-    enabled: !!id,
+    enabled: !!id && isAuthenticated,
   });
 
   const updateCruiseMutation = useMutation({
-    mutationFn: async (data: { name: string; description: string; isActive: boolean }) => {
+    mutationFn: async (data: { name: string; description: string; isActive: boolean; isPublished: boolean }) => {
       return await apiRequest("PATCH", `/api/cruises/${id}`, data);
     },
     onSuccess: async () => {
@@ -119,6 +123,18 @@ export default function CruiseDetail() {
     },
   });
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
+
   const copyShareLink = () => {
     if (!cruise) return;
     const url = `${window.location.origin}/form/${cruise.shareId}`;
@@ -134,6 +150,7 @@ export default function CruiseDetail() {
       setEditName(cruise.name);
       setEditDescription(cruise.description || "");
       setEditIsActive(cruise.isActive ?? true);
+      setEditIsPublished(cruise.isPublished ?? false);
       setIsEditing(true);
     }
   };
@@ -143,6 +160,7 @@ export default function CruiseDetail() {
       name: editName,
       description: editDescription,
       isActive: editIsActive,
+      isPublished: editIsPublished,
     });
   };
 
@@ -463,6 +481,14 @@ export default function CruiseDetail() {
                 data-testid="switch-cruise-active"
               />
               <Label>Active (accepting new signups)</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={editIsPublished}
+                onCheckedChange={setEditIsPublished}
+                data-testid="switch-cruise-published"
+              />
+              <Label>Published (visible on public landing page)</Label>
             </div>
           </div>
           <DialogFooter>

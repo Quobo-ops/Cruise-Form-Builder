@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ export default function FormBuilder() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { isLoading: authLoading, isAuthenticated } = useAuth();
   
   const [graph, setGraph] = useState<FormGraph | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
@@ -46,6 +48,7 @@ export default function FormBuilder() {
 
   const { data: template, isLoading } = useQuery<Template>({
     queryKey: ["/api/templates", id],
+    enabled: isAuthenticated,
   });
 
   useEffect(() => {
@@ -104,6 +107,18 @@ export default function FormBuilder() {
       });
     },
   });
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   const handleSave = async () => {
     setIsSaving(true);

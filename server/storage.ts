@@ -26,6 +26,7 @@ export interface IStorage {
 
   // Cruises
   getCruises(): Promise<Cruise[]>;
+  getPublishedCruises(): Promise<Cruise[]>;
   getCruise(id: string): Promise<Cruise | undefined>;
   getCruiseByShareId(shareId: string): Promise<Cruise | undefined>;
   createCruise(cruise: InsertCruise): Promise<Cruise>;
@@ -102,6 +103,12 @@ export class DatabaseStorage implements IStorage {
   // Cruises
   async getCruises(): Promise<Cruise[]> {
     return await db.select().from(cruises).orderBy(sql`${cruises.createdAt} DESC`);
+  }
+
+  async getPublishedCruises(): Promise<Cruise[]> {
+    return await db.select().from(cruises)
+      .where(eq(cruises.isPublished, true))
+      .orderBy(sql`${cruises.startDate} ASC NULLS LAST`);
   }
 
   async getCruise(id: string): Promise<Cruise | undefined> {
