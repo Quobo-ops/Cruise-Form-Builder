@@ -23,8 +23,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Template, FormGraph } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DecisionTreeViewer } from "@/components/decision-tree-viewer";
-import { CascadingGraphBuilder } from "@/components/cascading-graph-builder";
+import { DecisionTreeEditor } from "@/components/decision-tree-editor";
 
 export default function FormBuilder() {
   const { id } = useParams<{ id: string }>();
@@ -37,7 +36,6 @@ export default function FormBuilder() {
   const [templateName, setTemplateName] = useState("");
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isGraphViewerOpen, setIsGraphViewerOpen] = useState(false);
 
   const { data: template, isLoading } = useQuery<Template>({
     queryKey: ["/api/templates", id],
@@ -171,16 +169,6 @@ export default function FormBuilder() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <ThemeToggle />
-            <Button 
-              variant="outline" 
-              className="gap-2" 
-              onClick={() => setIsGraphViewerOpen(true)}
-              disabled={!graph || Object.keys(graph.steps).length === 0}
-              data-testid="button-decision-tree"
-            >
-              <GitBranch className="w-4 h-4" />
-              <span className="hidden sm:inline">Decision Tree</span>
-            </Button>
             <Link href={`/admin/preview/${id}`}>
               <Button variant="outline" className="gap-2" data-testid="button-preview">
                 <Eye className="w-4 h-4" />
@@ -219,7 +207,7 @@ export default function FormBuilder() {
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <CardTitle className="text-lg flex items-center gap-2">
                 <GitBranch className="w-5 h-5" />
-                Form Flow Builder
+                Decision Tree Builder
               </CardTitle>
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{stepCount} steps</Badge>
@@ -229,12 +217,12 @@ export default function FormBuilder() {
               </div>
             </div>
             <p className="text-sm text-muted-foreground">
-              Click on any step to edit it inline. Add new steps using the buttons that appear below each step or branch.
+              Click on any node to edit it. Use the + buttons to add new steps or end branches.
             </p>
           </CardHeader>
           <CardContent>
             {graph ? (
-              <CascadingGraphBuilder
+              <DecisionTreeEditor
                 graph={graph}
                 onGraphChange={handleGraphChange}
                 selectedStepId={selectedStepId}
@@ -282,14 +270,6 @@ export default function FormBuilder() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {graph && (
-        <DecisionTreeViewer
-          graph={graph}
-          open={isGraphViewerOpen}
-          onOpenChange={setIsGraphViewerOpen}
-        />
-      )}
     </div>
   );
 }
