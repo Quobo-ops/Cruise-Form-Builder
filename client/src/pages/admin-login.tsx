@@ -109,11 +109,6 @@ export default function AdminLogin() {
                   )}
                 </Button>
               </form>
-              <div className="mt-6 p-4 bg-muted rounded-md">
-                <p className="text-sm text-muted-foreground text-center">
-                  Default credentials: <strong>admin</strong> / <strong>admin123</strong>
-                </p>
-              </div>
             </CardContent>
           </Card>
         </div>
