@@ -8,10 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Ship, ArrowLeft, ArrowRight, ChevronLeft, Edit, Minus, Plus, DollarSign } from "lucide-react";
+import { Ship, ArrowLeft, ArrowRight, ChevronLeft, Edit, Minus, Plus, DollarSign, Info } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { Template, Step, QuantityAnswer } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StepInfoPopup } from "@/components/step-info-popup";
 
 export default function FormPreview() {
   const { id } = useParams<{ id: string }>();
@@ -24,6 +25,7 @@ export default function FormPreview() {
   const [quantitySelections, setQuantitySelections] = useState<Record<string, number>>({});
   const [history, setHistory] = useState<string[]>([]);
   const [isReview, setIsReview] = useState(false);
+  const [showInfoPopup, setShowInfoPopup] = useState(false);
 
   const { data: template, isLoading } = useQuery<Template>({
     queryKey: ["/api/templates", id],
@@ -406,10 +408,29 @@ export default function FormPreview() {
             </Card>
           ) : currentStep ? (
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">{currentStep.question}</CardTitle>
+              <CardHeader className="flex flex-row items-start justify-between gap-2">
+                <CardTitle className="text-lg flex-1">{currentStep.question}</CardTitle>
+                {currentStep.infoPopup?.enabled && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowInfoPopup(true)}
+                    className="flex-shrink-0 animate-pulse border-blue-400 text-blue-500 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                    title="More information"
+                    data-testid="button-step-info"
+                  >
+                    <Info className="w-4 h-4" />
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="space-y-4">
+                {currentStep.infoPopup?.enabled && currentStep.infoPopup && (
+                  <StepInfoPopup
+                    infoPopup={currentStep.infoPopup}
+                    open={showInfoPopup}
+                    onOpenChange={setShowInfoPopup}
+                  />
+                )}
                 {currentStep.type === "text" ? (
                   <>
                     <Input
