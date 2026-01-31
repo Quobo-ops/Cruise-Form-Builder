@@ -23,7 +23,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Template, FormGraph } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TemplateGraphViewer } from "@/components/template-graph-viewer";
+import { DecisionTreeViewer } from "@/components/decision-tree-viewer";
 import { CascadingGraphBuilder } from "@/components/cascading-graph-builder";
 
 export default function FormBuilder() {
@@ -176,10 +176,10 @@ export default function FormBuilder() {
               className="gap-2" 
               onClick={() => setIsGraphViewerOpen(true)}
               disabled={!graph || Object.keys(graph.steps).length === 0}
-              data-testid="button-review-flow"
+              data-testid="button-decision-tree"
             >
               <GitBranch className="w-4 h-4" />
-              <span className="hidden sm:inline">Preview Flow</span>
+              <span className="hidden sm:inline">Decision Tree</span>
             </Button>
             <Link href={`/admin/preview/${id}`}>
               <Button variant="outline" className="gap-2" data-testid="button-preview">
@@ -284,7 +284,7 @@ export default function FormBuilder() {
       </Dialog>
 
       {graph && (
-        <TemplateGraphViewer
+        <DecisionTreeViewer
           graph={graph}
           open={isGraphViewerOpen}
           onOpenChange={setIsGraphViewerOpen}
