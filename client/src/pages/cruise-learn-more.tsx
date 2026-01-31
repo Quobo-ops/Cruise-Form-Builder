@@ -101,37 +101,31 @@ export default function CruiseLearnMore() {
         </h1>
 
         {images.length > 0 && (
-          <div className="relative mb-8 rounded-lg overflow-hidden shadow-lg" data-testid="image-carousel">
-            <img
-              src={images[currentImageIndex]}
-              alt={`${cruise.name} - Image ${currentImageIndex + 1}`}
-              className="w-full h-80 object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect fill='%23f0f0f0' width='100' height='100'/%3E%3Ctext x='50' y='50' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not found%3C/text%3E%3C/svg%3E";
-              }}
-              data-testid="img-cruise-preview"
-            />
-            
+          <div className="flex items-center gap-4 mb-8" data-testid="image-carousel">
             {images.length > 1 && (
-              <>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-background/80 hover:bg-background"
-                  onClick={handlePrevImage}
-                  data-testid="button-prev-image"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-background/80 hover:bg-background"
-                  onClick={handleNextImage}
-                  data-testid="button-next-image"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="flex-shrink-0"
+                onClick={handlePrevImage}
+                data-testid="button-prev-image"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </Button>
+            )}
+            
+            <div className="relative flex-1 rounded-lg overflow-hidden shadow-lg">
+              <img
+                src={images[currentImageIndex]}
+                alt={`${cruise.name} - Image ${currentImageIndex + 1}`}
+                className="w-full h-80 object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect fill='%23f0f0f0' width='100' height='100'/%3E%3Ctext x='50' y='50' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not found%3C/text%3E%3C/svg%3E";
+                }}
+                data-testid="img-cruise-preview"
+              />
+              
+              {images.length > 1 && (
                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
                   {images.map((_, index) => (
                     <button
@@ -146,7 +140,19 @@ export default function CruiseLearnMore() {
                     />
                   ))}
                 </div>
-              </>
+              )}
+            </div>
+            
+            {images.length > 1 && (
+              <Button
+                variant="outline"
+                size="icon"
+                className="flex-shrink-0"
+                onClick={handleNextImage}
+                data-testid="button-next-image"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </Button>
             )}
           </div>
         )}
