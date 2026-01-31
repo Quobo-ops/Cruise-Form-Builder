@@ -45,6 +45,69 @@ export default function FormPreview() {
     return Math.round((answeredSteps / totalSteps) * 100);
   }, [graph, answers]);
 
+  // Get ordered list of all steps for navigation
+  const orderedSteps = useMemo(() => {
+    if (!graph) return [];
+    const steps: Step[] = [];
+    const visited = new Set<string>();
+    
+    const traverse = (stepId: string) => {
+      if (visited.has(stepId) || !graph.steps[stepId]) return;
+      visited.add(stepId);
+      const step = graph.steps[stepId];
+      steps.push(step);
+      
+      // Follow primary path first
+      if (step.nextStepId) {
+        traverse(step.nextStepId);
+      }
+      
+      // Then follow choice paths
+      if (step.choices) {
+        step.choices.forEach(choice => {
+          if (choice.nextStepId) {
+            traverse(choice.nextStepId);
+          }
+        });
+      }
+    };
+    
+    traverse(graph.rootStepId);
+    return steps;
+  }, [graph]);
+
+  const currentStepIndex = useMemo(() => {
+    const stepId = currentStepId || graph?.rootStepId;
+    return orderedSteps.findIndex(s => s.id === stepId);
+  }, [orderedSteps, currentStepId, graph?.rootStepId]);
+
+  const handlePreviewNavigate = (direction: 'prev' | 'next') => {
+    if (orderedSteps.length === 0) return;
+    
+    // Clear review state when navigating
+    if (isReview) {
+      setIsReview(false);
+    }
+    
+    let newIndex = currentStepIndex;
+    if (direction === 'prev') {
+      newIndex = Math.max(0, currentStepIndex - 1);
+    } else {
+      newIndex = Math.min(orderedSteps.length - 1, currentStepIndex + 1);
+    }
+    
+    const newStep = orderedSteps[newIndex];
+    if (newStep) {
+      setCurrentStepId(newStep.id);
+      // Reset input state when navigating
+      setInputValue("");
+      setQuantitySelections({});
+    }
+  };
+
+  const canNavigatePrev = currentStepIndex > 0;
+  const canNavigateNext = currentStepIndex < orderedSteps.length - 1;
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -260,7 +323,32 @@ export default function FormPreview() {
             <p className="text-sm text-muted-foreground mt-1">Preview Mode</p>
           </div>
 
-          <Progress value={progress} className="mb-6" />
+          <Progress value={progress} className="mb-4" />
+
+          {/* Preview Navigation - Arrow buttons to browse wireframes */}
+          <div className="flex items-center justify-between mb-6 p-2 bg-muted/50 rounded-md">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handlePreviewNavigate('prev')}
+              disabled={!canNavigatePrev}
+              data-testid="button-preview-prev"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Step {currentStepIndex + 1} of {orderedSteps.length}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handlePreviewNavigate('next')}
+              disabled={!canNavigateNext}
+              data-testid="button-preview-next"
+            >
+              <ArrowRight className="w-5 h-5" />
+            </Button>
+          </div>
 
           {isReview ? (
             <Card>
