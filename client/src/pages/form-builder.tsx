@@ -46,11 +46,11 @@ export default function FormBuilder() {
     if (template) {
       setGraph(template.graph);
       setTemplateName(template.name);
-      if (!selectedStepId && template.graph?.rootStepId) {
+      if (template.graph?.rootStepId) {
         setSelectedStepId(template.graph.rootStepId);
       }
     }
-  }, [template, selectedStepId]);
+  }, [template]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
