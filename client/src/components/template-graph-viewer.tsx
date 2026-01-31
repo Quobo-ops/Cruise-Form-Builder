@@ -44,7 +44,7 @@ export function TemplateGraphViewer({ graph, open, onOpenChange }: TemplateGraph
     
     while (currentStepId && g.steps[currentStepId] && !visitedSteps.has(currentStepId)) {
       visitedSteps.add(currentStepId);
-      const step = g.steps[currentStepId];
+      const step: Step = g.steps[currentStepId];
       
       const node: PathNode = {
         stepId: currentStepId,
@@ -52,7 +52,8 @@ export function TemplateGraphViewer({ graph, open, onOpenChange }: TemplateGraph
       };
 
       if (step.type === "choice" && step.choices && step.choices.length > 0) {
-        const selectedChoiceId = selections[currentStepId] || step.choices[0].id;
+        const stepId = currentStepId;
+        const selectedChoiceId: string = selections[stepId] || step.choices[0].id;
         const selectedChoice = step.choices.find(c => c.id === selectedChoiceId) || step.choices[0];
         node.selectedChoiceId = selectedChoice.id;
         node.selectedChoiceLabel = selectedChoice.label;
