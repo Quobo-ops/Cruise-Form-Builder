@@ -314,6 +314,7 @@ export default function CruiseDetail() {
                     <TableHead>Item</TableHead>
                     <TableHead>Price</TableHead>
                     <TableHead className="text-center">Ordered</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
                     <TableHead className="text-center">Limit</TableHead>
                     <TableHead className="text-center">Remaining</TableHead>
                     <TableHead className="text-center">Status</TableHead>
@@ -332,6 +333,9 @@ export default function CruiseDetail() {
                       </TableCell>
                       <TableCell>{formatPrice(item.price)}</TableCell>
                       <TableCell className="text-center font-medium">{item.totalOrdered}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatPrice(Number(item.price) * item.totalOrdered)}
+                      </TableCell>
                       <TableCell className="text-center">
                         {editingLimit?.stepId === item.stepId && editingLimit?.choiceId === item.choiceId ? (
                           <div className="flex items-center gap-2 justify-center">
