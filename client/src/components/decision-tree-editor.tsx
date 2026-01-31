@@ -23,8 +23,10 @@ import {
   ArrowRight,
   Check,
   AlertTriangle,
+  Info,
+  ImagePlus,
 } from "lucide-react";
-import type { FormGraph, Step, QuantityChoice } from "@shared/schema";
+import type { FormGraph, Step, QuantityChoice, InfoPopup } from "@shared/schema";
 
 interface DecisionTreeEditorProps {
   graph: FormGraph;
@@ -149,6 +151,7 @@ function TreeNode({
   const step = graph.steps[stepId];
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showInfoEditor, setShowInfoEditor] = useState(false);
   const isSelected = selectedStepId === stepId;
 
   const countDescendants = useCallback((currentStepId: string, visited: Set<string> = new Set()): number => {
@@ -303,6 +306,19 @@ function TreeNode({
                     data-testid={`button-save-draft-${stepId}`}
                   >
                     <Check className="w-3 h-3" />
+                  </Button>
+                  <Button
+                    variant={step.infoPopup?.enabled ? "default" : "outline"}
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowInfoEditor(!showInfoEditor);
+                    }}
+                    title={step.infoPopup?.enabled ? "Edit info popup" : "Add info popup"}
+                    className={step.infoPopup?.enabled ? "animate-pulse" : ""}
+                    data-testid={`button-info-${stepId}`}
+                  >
+                    <Info className="w-3 h-3" />
                   </Button>
                   <Button
                     variant="destructive"
@@ -540,6 +556,129 @@ function TreeNode({
                     data-testid={`input-submit-text-${stepId}`}
                   />
                 </div>
+              </div>
+            )}
+
+            {showInfoEditor && (
+              <div className="space-y-3 p-3 border-2 border-dashed border-blue-400 dark:border-blue-600 rounded-lg bg-blue-50/50 dark:bg-blue-900/20">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold flex items-center gap-1">
+                    <Info className="w-3 h-3" />
+                    Informational Popup
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={step.infoPopup?.enabled || false}
+                      onCheckedChange={(checked) => {
+                        const currentInfo = step.infoPopup || { enabled: false };
+                        onUpdateStep(stepId, { 
+                          infoPopup: { ...currentInfo, enabled: checked } 
+                        });
+                      }}
+                      data-testid={`switch-info-enabled-${stepId}`}
+                    />
+                    <Label className="text-[10px] opacity-70">
+                      {step.infoPopup?.enabled ? "Enabled" : "Disabled"}
+                    </Label>
+                  </div>
+                </div>
+
+                {step.infoPopup?.enabled && (
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs opacity-70">Header</Label>
+                      <Input
+                        value={step.infoPopup?.header || ""}
+                        onChange={(e) => {
+                          const currentInfo = step.infoPopup || { enabled: true };
+                          onUpdateStep(stepId, { 
+                            infoPopup: { ...currentInfo, header: e.target.value } 
+                          });
+                        }}
+                        className="text-xs bg-white/50 dark:bg-black/20"
+                        placeholder="More Information"
+                        data-testid={`input-info-header-${stepId}`}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs opacity-70 flex items-center gap-1">
+                        <ImagePlus className="w-3 h-3" />
+                        Images (one URL per line)
+                      </Label>
+                      <Textarea
+                        value={(step.infoPopup?.images || []).join("\n")}
+                        onChange={(e) => {
+                          const currentInfo = step.infoPopup || { enabled: true };
+                          const images = e.target.value.split("\n").filter(url => url.trim());
+                          onUpdateStep(stepId, { 
+                            infoPopup: { ...currentInfo, images } 
+                          });
+                        }}
+                        className="min-h-16 text-xs bg-white/50 dark:bg-black/20"
+                        placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg"
+                        data-testid={`input-info-images-${stepId}`}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs opacity-70">Description</Label>
+                      <Textarea
+                        value={step.infoPopup?.description || ""}
+                        onChange={(e) => {
+                          const currentInfo = step.infoPopup || { enabled: true };
+                          onUpdateStep(stepId, { 
+                            infoPopup: { ...currentInfo, description: e.target.value } 
+                          });
+                        }}
+                        className="min-h-24 text-xs bg-white/50 dark:bg-black/20"
+                        placeholder="Provide helpful information about this step..."
+                        data-testid={`input-info-description-${stepId}`}
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => {
+                          setShowInfoEditor(false);
+                          onSaveDraft?.();
+                        }}
+                        className="text-[10px] h-6 px-2 gap-1"
+                        data-testid={`button-save-info-${stepId}`}
+                      >
+                        <Check className="w-3 h-3" />
+                        Save Info
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => {
+                          onUpdateStep(stepId, { 
+                            infoPopup: { enabled: false, header: "", images: [], description: "" } 
+                          });
+                          setShowInfoEditor(false);
+                        }}
+                        className="text-[10px] h-6 px-2 gap-1"
+                        data-testid={`button-delete-info-${stepId}`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Remove
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setShowInfoEditor(false)}
+                        className="text-[10px] h-6 px-2 gap-1"
+                        data-testid={`button-close-info-editor-${stepId}`}
+                      >
+                        <X className="w-3 h-3" />
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
