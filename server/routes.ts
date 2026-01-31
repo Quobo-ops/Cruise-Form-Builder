@@ -159,7 +159,7 @@ export async function registerRoutes(
   // Template routes (protected)
   app.get("/api/templates", requireAuth, async (req, res) => {
     try {
-      const templates = await storage.getTemplates();
+      const templates = await storage.getTemplatesWithCruiseCounts();
       res.json(templates);
     } catch (error) {
       console.error("Get templates error:", error);

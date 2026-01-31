@@ -18,6 +18,7 @@ export interface IStorage {
 
   // Templates
   getTemplates(): Promise<Template[]>;
+  getTemplatesWithCruiseCounts(): Promise<(Template & { cruiseCount: number })[]>;
   getTemplate(id: string): Promise<Template | undefined>;
   getTemplateByShareId(shareId: string): Promise<Template | undefined>;
   createTemplate(template: InsertTemplate): Promise<Template>;
@@ -69,6 +70,24 @@ export class DatabaseStorage implements IStorage {
   // Templates
   async getTemplates(): Promise<Template[]> {
     return await db.select().from(templates);
+  }
+
+  async getTemplatesWithCruiseCounts(): Promise<(Template & { cruiseCount: number })[]> {
+    const allTemplates = await db.select().from(templates);
+    const cruiseCounts = await db
+      .select({
+        templateId: cruises.templateId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(cruises)
+      .groupBy(cruises.templateId);
+    
+    const countMap = new Map(cruiseCounts.map(c => [c.templateId, c.count]));
+    
+    return allTemplates.map(template => ({
+      ...template,
+      cruiseCount: countMap.get(template.id) || 0,
+    }));
   }
 
   async getTemplate(id: string): Promise<Template | undefined> {

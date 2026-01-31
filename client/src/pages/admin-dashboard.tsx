@@ -69,7 +69,7 @@ export default function AdminDashboard() {
     : location.includes("/admin/cruises") ? "cruises" 
     : "cruises";
 
-  const { data: templates, isLoading: templatesLoading } = useQuery<Template[]>({
+  const { data: templates, isLoading: templatesLoading } = useQuery<(Template & { cruiseCount: number })[]>({
     queryKey: ["/api/templates"],
     enabled: isAuthenticated,
   });
@@ -226,15 +226,6 @@ export default function AdminDashboard() {
   const filteredCruises = cruises?.filter((c) =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const copyShareLink = (shareId: string) => {
-    const url = `${window.location.origin}/form/${shareId}`;
-    navigator.clipboard.writeText(url);
-    toast({
-      title: "Link copied",
-      description: "The shareable link has been copied to your clipboard.",
-    });
-  };
 
   const copyCruiseLink = (shareId: string) => {
     const url = `${window.location.origin}/form/${shareId}`;
@@ -656,15 +647,6 @@ export default function AdminDashboard() {
                               <Copy className="w-4 h-4" />
                               Duplicate
                             </DropdownMenuItem>
-                            {template.shareId && (
-                              <DropdownMenuItem
-                                onClick={() => copyShareLink(template.shareId!)}
-                                className="flex items-center gap-2"
-                              >
-                                <ExternalLink className="w-4 h-4" />
-                                Copy Link
-                              </DropdownMenuItem>
-                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => setDeleteTemplateId(template.id)}
@@ -679,17 +661,9 @@ export default function AdminDashboard() {
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-center gap-2">
-                        {template.published ? (
-                          <Badge variant="default" className="bg-green-600">Published</Badge>
-                        ) : (
-                          <Badge variant="secondary">Draft</Badge>
-                        )}
-                        {template.shareId && (
-                          <Badge variant="outline" className="gap-1">
-                            <ExternalLink className="w-3 h-3" />
-                            Shareable
-                          </Badge>
-                        )}
+                        <Badge variant="secondary">
+                          {template.cruiseCount || 0} {template.cruiseCount === 1 ? 'cruise' : 'cruises'}
+                        </Badge>
                       </div>
                     </CardContent>
                   </Card>
