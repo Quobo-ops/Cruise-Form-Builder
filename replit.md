@@ -99,6 +99,12 @@ npm run db:push      # Push schema changes to database
 - `SESSION_SECRET`: Secret for session encryption (required for production)
 
 ## Recent Changes
+- **Learn More Feature** (Jan 2026)
+  - Added Learn More content management for cruises (header, images, description)
+  - Admin can add/edit Learn More content in cruise detail page's Learn More tab
+  - Public Learn More page with image carousel (left/right navigation, dot indicators)
+  - Learn More button added to cruise cards on landing page
+  - Form submission now redirects users to home page after 2-second "Welcome Aboard" message
 - **Decision Tree Visualization** (Jan 2026)
   - Added visual decision tree viewer showing form flow as a hierarchical tree
   - Root nodes displayed in yellow/amber, decision nodes in blue, leaf nodes in green
