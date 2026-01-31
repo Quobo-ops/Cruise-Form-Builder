@@ -99,6 +99,12 @@ npm run db:push      # Push schema changes to database
 - `SESSION_SECRET`: Secret for session encryption (required for production)
 
 ## Recent Changes
+- **Redesigned Template Builder with Cascading Graph View** (Jan 2026)
+  - New visual graph builder showing steps with branching for choice options
+  - Inline step editing within each node (no separate edit panel)
+  - Add step buttons appear at end of each branch for easy flow building
+  - Each choice option creates its own visual branch in the graph
+  - Collapsible nodes for managing complex forms
 - Added Cruise entity with CRUD operations and unique shareable links
 - Added new "quantity" step type for multi-choice with quantity and price
 - Implemented inventory tracking for quantity items with stock limits
