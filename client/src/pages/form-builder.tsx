@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -17,7 +17,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { 
   Ship, ArrowLeft, Save, Eye, 
-  Loader2, Share2, GitBranch
+  Loader2, Share2, GitBranch, Undo2, Redo2
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -36,6 +36,10 @@ export default function FormBuilder() {
   const [templateName, setTemplateName] = useState("");
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  
+  const [graphHistory, setGraphHistory] = useState<FormGraph[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const isInitialized = useRef(false);
 
   const { data: template, isLoading } = useQuery<Template>({
     queryKey: ["/api/templates", id],
@@ -43,14 +47,55 @@ export default function FormBuilder() {
   });
 
   useEffect(() => {
-    if (template) {
+    if (template && !isInitialized.current) {
       setGraph(template.graph);
       setTemplateName(template.name);
       if (template.graph?.rootStepId) {
         setSelectedStepId(template.graph.rootStepId);
       }
+      if (template.graph) {
+        const deepClonedGraph = JSON.parse(JSON.stringify(template.graph));
+        setGraphHistory([deepClonedGraph]);
+        setHistoryIndex(0);
+      }
+      isInitialized.current = true;
     }
   }, [template]);
+
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < graphHistory.length - 1;
+
+  const handleUndo = useCallback(() => {
+    if (canUndo) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      const restoredGraph = JSON.parse(JSON.stringify(graphHistory[newIndex]));
+      setGraph(restoredGraph);
+      setSelectedStepId(null);
+    }
+  }, [canUndo, historyIndex, graphHistory]);
+
+  const handleRedo = useCallback(() => {
+    if (canRedo) {
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      const restoredGraph = JSON.parse(JSON.stringify(graphHistory[newIndex]));
+      setGraph(restoredGraph);
+      setSelectedStepId(null);
+    }
+  }, [canRedo, historyIndex, graphHistory]);
+
+  const addToHistory = useCallback((newGraph: FormGraph) => {
+    const deepClonedGraph = JSON.parse(JSON.stringify(newGraph));
+    setHistoryIndex(prevIndex => {
+      setGraphHistory(prev => {
+        const newHistory = prev.slice(0, prevIndex + 1);
+        newHistory.push(deepClonedGraph);
+        return newHistory;
+      });
+      return prevIndex + 1;
+    });
+  }, []);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -117,9 +162,22 @@ export default function FormBuilder() {
     setIsSaving(false);
   };
 
-  const handleGraphChange = (newGraph: FormGraph) => {
+  const handleGraphChange = (newGraph: FormGraph, addHistory: boolean = true) => {
     setGraph(newGraph);
+    if (addHistory) {
+      addToHistory(newGraph);
+    }
   };
+
+  const handleSaveDraft = useCallback(() => {
+    if (graph) {
+      addToHistory(graph);
+      toast({
+        title: "Draft saved",
+        description: "Your current progress has been saved as a checkpoint.",
+      });
+    }
+  }, [graph, addToHistory, toast]);
 
   const stepCount = graph ? Object.keys(graph.steps).length : 0;
   const choiceBranchCount = graph 
@@ -168,6 +226,28 @@ export default function FormBuilder() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1 mr-2 border-r pr-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleUndo}
+                disabled={!canUndo}
+                title="Undo (go back)"
+                data-testid="button-undo"
+              >
+                <Undo2 className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleRedo}
+                disabled={!canRedo}
+                title="Redo (go forward)"
+                data-testid="button-redo"
+              >
+                <Redo2 className="w-4 h-4" />
+              </Button>
+            </div>
             <ThemeToggle />
             <Link href={`/admin/preview/${id}`}>
               <Button variant="outline" className="gap-2" data-testid="button-preview">
@@ -227,6 +307,7 @@ export default function FormBuilder() {
                 onGraphChange={handleGraphChange}
                 selectedStepId={selectedStepId}
                 onSelectStep={setSelectedStepId}
+                onSaveDraft={handleSaveDraft}
               />
             ) : (
               <div className="flex items-center justify-center py-16">

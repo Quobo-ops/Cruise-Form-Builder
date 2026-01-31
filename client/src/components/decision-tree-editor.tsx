@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -21,14 +21,17 @@ import {
   CheckCircle2,
   X,
   ArrowRight,
+  Check,
+  AlertTriangle,
 } from "lucide-react";
 import type { FormGraph, Step, QuantityChoice } from "@shared/schema";
 
 interface DecisionTreeEditorProps {
   graph: FormGraph;
-  onGraphChange: (graph: FormGraph) => void;
+  onGraphChange: (graph: FormGraph, addHistory?: boolean) => void;
   selectedStepId: string | null;
   onSelectStep: (stepId: string | null) => void;
+  onSaveDraft?: () => void;
 }
 
 interface AddStepButtonProps {
@@ -120,6 +123,9 @@ interface TreeNodeProps {
   onUpdateStep: (stepId: string, updates: Partial<Step>) => void;
   onDeleteStep: (stepId: string) => void;
   onAddStep: (parentId: string, type: "text" | "choice" | "quantity" | "conclusion", choiceId?: string) => void;
+  onSaveDraft?: () => void;
+  onRevertStep?: (stepId: string) => void;
+  stepSnapshot?: Step | null;
   isRoot?: boolean;
   depth?: number;
   visitedSteps?: Set<string>;
@@ -133,13 +139,41 @@ function TreeNode({
   onUpdateStep,
   onDeleteStep,
   onAddStep,
+  onSaveDraft,
+  onRevertStep,
+  stepSnapshot,
   isRoot = false,
   depth = 0,
   visitedSteps = new Set(),
 }: TreeNodeProps) {
   const step = graph.steps[stepId];
   const [isEditing, setIsEditing] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const isSelected = selectedStepId === stepId;
+
+  const countDescendants = useCallback((currentStepId: string, visited: Set<string> = new Set()): number => {
+    if (visited.has(currentStepId)) return 0;
+    visited.add(currentStepId);
+    
+    const currentStep = graph.steps[currentStepId];
+    if (!currentStep) return 0;
+    
+    let count = 0;
+    
+    if (currentStep.type === "choice" && currentStep.choices) {
+      for (const choice of currentStep.choices) {
+        if (choice.nextStepId && !visited.has(choice.nextStepId)) {
+          count += 1 + countDescendants(choice.nextStepId, visited);
+        }
+      }
+    } else if (currentStep.nextStepId && !visited.has(currentStep.nextStepId)) {
+      count += 1 + countDescendants(currentStep.nextStepId, visited);
+    }
+    
+    return count;
+  }, [graph.steps]);
+
+  const descendantCount = useMemo(() => countDescendants(stepId), [countDescendants, stepId]);
 
   if (!step) return null;
 
@@ -249,30 +283,91 @@ function TreeNode({
             {getTypeIcon()}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1 mb-1">
+            <div className="flex items-center gap-1 mb-1 flex-wrap">
               <Badge variant="outline" className="text-[10px] px-1 py-0">
                 {step.type === "text" ? "Text" : step.type === "choice" ? "Choice" : step.type === "quantity" ? "Quantity" : "End"}
               </Badge>
               {isRoot && (
                 <Badge className="text-[10px] px-1 py-0">Start</Badge>
               )}
+              {!isRoot && isSelected && isEditing && !showDeleteConfirm && (
+                <div className="flex items-center gap-0.5 ml-auto" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSaveDraft?.();
+                    }}
+                    title="Save draft checkpoint"
+                    data-testid={`button-save-draft-${stepId}`}
+                  >
+                    <Check className="w-3 h-3" />
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDeleteConfirm(true);
+                    }}
+                    title="Delete step"
+                    data-testid={`button-delete-${stepId}`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRevertStep?.(stepId);
+                      setIsEditing(false);
+                      onSelectStep(null);
+                    }}
+                    title="Close and revert changes"
+                    data-testid={`button-close-${stepId}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              )}
+              {!isRoot && isSelected && isEditing && showDeleteConfirm && (
+                <div className="flex items-center gap-1 ml-auto" onClick={(e) => e.stopPropagation()}>
+                  <Badge variant="destructive" className="text-[10px] px-1 py-0 gap-0.5">
+                    <AlertTriangle className="w-2.5 h-2.5" />
+                    {descendantCount > 0 ? `${descendantCount}` : '?'}
+                  </Badge>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteStep(stepId);
+                      setShowDeleteConfirm(false);
+                    }}
+                    title="Confirm delete"
+                    data-testid={`button-confirm-delete-${stepId}`}
+                  >
+                    <Check className="w-3 h-3" />
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDeleteConfirm(false);
+                    }}
+                    title="Cancel delete"
+                    data-testid={`button-cancel-delete-${stepId}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              )}
             </div>
             <p className="text-xs font-medium line-clamp-2">{step.question}</p>
           </div>
-          {!isRoot && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDeleteStep(stepId);
-              }}
-              data-testid={`button-delete-${stepId}`}
-            >
-              <X className="w-3 h-3" />
-            </Button>
-          )}
         </div>
 
         {isSelected && isEditing && (
@@ -521,6 +616,8 @@ function TreeNode({
                               onUpdateStep={onUpdateStep}
                               onDeleteStep={onDeleteStep}
                               onAddStep={onAddStep}
+                              onSaveDraft={onSaveDraft}
+                              onRevertStep={onRevertStep}
                               depth={depth + 1}
                               visitedSteps={newVisited}
                             />
@@ -564,6 +661,8 @@ function TreeNode({
                   onUpdateStep={onUpdateStep}
                   onDeleteStep={onDeleteStep}
                   onAddStep={onAddStep}
+                  onSaveDraft={onSaveDraft}
+                  onRevertStep={onRevertStep}
                   depth={depth + 1}
                   visitedSteps={newVisited}
                 />
@@ -586,7 +685,36 @@ export function DecisionTreeEditor({
   onGraphChange,
   selectedStepId,
   onSelectStep,
+  onSaveDraft,
 }: DecisionTreeEditorProps) {
+  const stepSnapshotRef = useRef<{ [stepId: string]: Step }>({});
+  const previousSelectedStepId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (selectedStepId && selectedStepId !== previousSelectedStepId.current) {
+      if (graph.steps[selectedStepId]) {
+        stepSnapshotRef.current[selectedStepId] = JSON.parse(JSON.stringify(graph.steps[selectedStepId]));
+      }
+    }
+    previousSelectedStepId.current = selectedStepId;
+  }, [selectedStepId, graph.steps]);
+
+  const handleRevertStep = useCallback(
+    (stepId: string) => {
+      const snapshot = stepSnapshotRef.current[stepId];
+      if (snapshot) {
+        onGraphChange({
+          ...graph,
+          steps: {
+            ...graph.steps,
+            [stepId]: snapshot,
+          },
+        }, false);
+      }
+      onSelectStep(null);
+    },
+    [graph, onGraphChange, onSelectStep]
+  );
 
   const handleAddStep = useCallback(
     (parentStepId: string, type: "text" | "choice" | "quantity" | "conclusion", choiceId?: string) => {
@@ -777,6 +905,8 @@ export function DecisionTreeEditor({
           onUpdateStep={handleUpdateStep}
           onDeleteStep={handleDeleteStep}
           onAddStep={handleAddStep}
+          onSaveDraft={onSaveDraft}
+          onRevertStep={handleRevertStep}
           isRoot={true}
         />
       </div>
