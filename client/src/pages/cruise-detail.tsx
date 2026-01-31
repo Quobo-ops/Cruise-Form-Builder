@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  Ship, ArrowLeft, Copy, Users, Package, Edit, Loader2, Save, Phone, User
+  Ship, ArrowLeft, Copy, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Plus, Trash2, Info
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -61,6 +61,12 @@ export default function CruiseDetail() {
   const [editIsPublished, setEditIsPublished] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [editingLimit, setEditingLimit] = useState<{ stepId: string; choiceId: string; value: string } | null>(null);
+  
+  const [learnMoreHeader, setLearnMoreHeader] = useState("");
+  const [learnMoreImages, setLearnMoreImages] = useState<string[]>([]);
+  const [learnMoreDescription, setLearnMoreDescription] = useState("");
+  const [newImageUrl, setNewImageUrl] = useState("");
+  const [previewImageIndex, setPreviewImageIndex] = useState(0);
 
   const { data: cruise, isLoading: cruiseLoading } = useQuery<CruiseWithCounts>({
     queryKey: ["/api/cruises", id],
@@ -124,6 +130,58 @@ export default function CruiseDetail() {
       });
     },
   });
+
+  const updateLearnMoreMutation = useMutation({
+    mutationFn: async (data: { learnMoreHeader: string | null; learnMoreImages: string[] | null; learnMoreDescription: string | null }) => {
+      return await apiRequest("PATCH", `/api/cruises/${id}`, data);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/cruises", id] });
+      toast({
+        title: "Learn More saved",
+        description: "Your Learn More content has been saved.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to save Learn More content.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const initLearnMoreFromCruise = () => {
+    if (cruise) {
+      setLearnMoreHeader(cruise.learnMoreHeader || "");
+      setLearnMoreImages(cruise.learnMoreImages || []);
+      setLearnMoreDescription(cruise.learnMoreDescription || "");
+      setPreviewImageIndex(0);
+    }
+  };
+
+  const handleAddImage = () => {
+    if (newImageUrl.trim()) {
+      setLearnMoreImages([...learnMoreImages, newImageUrl.trim()]);
+      setNewImageUrl("");
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    const updated = learnMoreImages.filter((_, i) => i !== index);
+    setLearnMoreImages(updated);
+    if (previewImageIndex >= updated.length) {
+      setPreviewImageIndex(Math.max(0, updated.length - 1));
+    }
+  };
+
+  const handleSaveLearnMore = () => {
+    updateLearnMoreMutation.mutate({
+      learnMoreHeader: learnMoreHeader || null,
+      learnMoreImages: learnMoreImages.length > 0 ? learnMoreImages : null,
+      learnMoreDescription: learnMoreDescription || null,
+    });
+  };
 
   if (authLoading) {
     return (
@@ -286,6 +344,10 @@ export default function CruiseDetail() {
             <TabsTrigger value="clients" className="gap-1.5" data-testid="tab-clients">
               <Users className="w-4 h-4" />
               <span className="hidden sm:inline">Clients</span>
+            </TabsTrigger>
+            <TabsTrigger value="learn-more" className="gap-1.5" data-testid="tab-learn-more" onClick={initLearnMoreFromCruise}>
+              <Info className="w-4 h-4" />
+              <span className="hidden sm:inline">Learn More</span>
             </TabsTrigger>
           </TabsList>
 
@@ -568,6 +630,126 @@ export default function CruiseDetail() {
                     <p className="text-muted-foreground">No submissions yet.</p>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="learn-more">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Learn More Content</CardTitle>
+                <CardDescription>
+                  Create the Learn More page that users see when they click the Learn More button.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label>Page Header</Label>
+                  <Input
+                    value={learnMoreHeader}
+                    onChange={(e) => setLearnMoreHeader(e.target.value)}
+                    placeholder="Enter a header for the Learn More page"
+                    data-testid="input-learn-more-header"
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <Label>Images</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newImageUrl}
+                      onChange={(e) => setNewImageUrl(e.target.value)}
+                      placeholder="Enter image URL"
+                      onKeyDown={(e) => e.key === "Enter" && handleAddImage()}
+                      data-testid="input-learn-more-image-url"
+                    />
+                    <Button onClick={handleAddImage} data-testid="button-add-image">
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  
+                  {learnMoreImages.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="relative bg-muted rounded-md overflow-hidden">
+                        <img
+                          src={learnMoreImages[previewImageIndex]}
+                          alt={`Preview ${previewImageIndex + 1}`}
+                          className="w-full h-64 object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect fill='%23f0f0f0' width='100' height='100'/%3E%3Ctext x='50' y='50' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not found%3C/text%3E%3C/svg%3E";
+                          }}
+                        />
+                        {learnMoreImages.length > 1 && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="absolute left-2 top-1/2 -translate-y-1/2 bg-background/80"
+                              onClick={() => setPreviewImageIndex(prev => prev === 0 ? learnMoreImages.length - 1 : prev - 1)}
+                              data-testid="button-prev-image"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="absolute right-2 top-1/2 -translate-y-1/2 bg-background/80"
+                              onClick={() => setPreviewImageIndex(prev => prev === learnMoreImages.length - 1 ? 0 : prev + 1)}
+                              data-testid="button-next-image"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </Button>
+                          </>
+                        )}
+                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-background/80 px-2 py-1 rounded text-xs">
+                          {previewImageIndex + 1} / {learnMoreImages.length}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        {learnMoreImages.map((url, index) => (
+                          <div key={index} className="flex items-center gap-2 p-2 border rounded-md">
+                            <Image className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                            <span className="text-sm truncate flex-1">{url}</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveImage(index)}
+                              data-testid={`button-remove-image-${index}`}
+                            >
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <Textarea
+                    value={learnMoreDescription}
+                    onChange={(e) => setLearnMoreDescription(e.target.value)}
+                    placeholder="Enter a description for this cruise..."
+                    rows={6}
+                    data-testid="input-learn-more-description"
+                  />
+                </div>
+
+                <Button
+                  onClick={handleSaveLearnMore}
+                  disabled={updateLearnMoreMutation.isPending}
+                  className="w-full gap-2"
+                  data-testid="button-save-learn-more"
+                >
+                  {updateLearnMoreMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  Save Learn More Content
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
