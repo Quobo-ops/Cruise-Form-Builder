@@ -570,7 +570,8 @@ function TreeNode({
                     <Switch
                       checked={step.infoPopup?.enabled || false}
                       onCheckedChange={(checked) => {
-                        const currentInfo = step.infoPopup || { enabled: false };
+                        const defaultInfo = { enabled: false, header: "", images: [] as string[], description: "" };
+                        const currentInfo = step.infoPopup ? { ...defaultInfo, ...step.infoPopup } : defaultInfo;
                         onUpdateStep(stepId, { 
                           infoPopup: { ...currentInfo, enabled: checked } 
                         });
@@ -590,7 +591,8 @@ function TreeNode({
                       <Input
                         value={step.infoPopup?.header || ""}
                         onChange={(e) => {
-                          const currentInfo = step.infoPopup || { enabled: true };
+                          const defaultInfo = { enabled: true, header: "", images: [] as string[], description: "" };
+                          const currentInfo = step.infoPopup ? { ...defaultInfo, ...step.infoPopup } : defaultInfo;
                           onUpdateStep(stepId, { 
                             infoPopup: { ...currentInfo, header: e.target.value } 
                           });
@@ -609,7 +611,8 @@ function TreeNode({
                       <Textarea
                         value={(step.infoPopup?.images || []).join("\n")}
                         onChange={(e) => {
-                          const currentInfo = step.infoPopup || { enabled: true };
+                          const defaultInfo = { enabled: true, header: "", images: [] as string[], description: "" };
+                          const currentInfo = step.infoPopup ? { ...defaultInfo, ...step.infoPopup } : defaultInfo;
                           const images = e.target.value.split("\n").filter(url => url.trim());
                           onUpdateStep(stepId, { 
                             infoPopup: { ...currentInfo, images } 
@@ -626,7 +629,8 @@ function TreeNode({
                       <Textarea
                         value={step.infoPopup?.description || ""}
                         onChange={(e) => {
-                          const currentInfo = step.infoPopup || { enabled: true };
+                          const defaultInfo = { enabled: true, header: "", images: [] as string[], description: "" };
+                          const currentInfo = step.infoPopup ? { ...defaultInfo, ...step.infoPopup } : defaultInfo;
                           onUpdateStep(stepId, { 
                             infoPopup: { ...currentInfo, description: e.target.value } 
                           });
