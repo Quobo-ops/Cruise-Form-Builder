@@ -144,6 +144,9 @@ function TreeNode({
     if (isRoot) {
       return "bg-amber-100 dark:bg-amber-900/40 border-amber-400 dark:border-amber-600 text-amber-900 dark:text-amber-100";
     }
+    if (step.type === "conclusion") {
+      return "bg-emerald-100 dark:bg-emerald-900/40 border-emerald-400 dark:border-emerald-600 text-emerald-900 dark:text-emerald-100";
+    }
     if (step.type === "choice") {
       return "bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-600 text-blue-900 dark:text-blue-100";
     }
@@ -158,6 +161,8 @@ function TreeNode({
         return <List className="w-3 h-3" />;
       case "quantity":
         return <ShoppingCart className="w-3 h-3" />;
+      case "conclusion":
+        return <CheckCircle2 className="w-3 h-3" />;
     }
   };
 
@@ -229,7 +234,7 @@ function TreeNode({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1 mb-1">
               <Badge variant="outline" className="text-[10px] px-1 py-0">
-                {step.type === "text" ? "Text" : step.type === "choice" ? "Choice" : "Quantity"}
+                {step.type === "text" ? "Text" : step.type === "choice" ? "Choice" : step.type === "quantity" ? "Quantity" : "End"}
               </Badge>
               {isRoot && (
                 <Badge className="text-[10px] px-1 py-0">Start</Badge>
@@ -401,6 +406,30 @@ function TreeNode({
                 ))}
               </div>
             )}
+
+            {step.type === "conclusion" && (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label className="text-xs opacity-70">Thank You Message</Label>
+                  <Textarea
+                    value={step.thankYouMessage || ""}
+                    onChange={(e) => onUpdateStep(stepId, { thankYouMessage: e.target.value })}
+                    className="min-h-16 text-xs bg-white/50 dark:bg-black/20"
+                    placeholder="Thank you for completing this form..."
+                    data-testid={`input-thank-you-${stepId}`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs opacity-70">Submit Button Text</Label>
+                  <Input
+                    value={step.submitButtonText || "Submit"}
+                    onChange={(e) => onUpdateStep(stepId, { submitButtonText: e.target.value })}
+                    className="text-xs bg-white/50 dark:bg-black/20"
+                    data-testid={`input-submit-text-${stepId}`}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -476,6 +505,8 @@ function TreeNode({
             })}
           </div>
         </div>
+      ) : step.type === "conclusion" ? (
+        null
       ) : (
         step.type !== "choice" && (
           step.nextStepId && graph.steps[step.nextStepId] ? (
@@ -523,36 +554,40 @@ export function DecisionTreeEditor({
 
   const handleAddStep = useCallback(
     (parentStepId: string, type: "text" | "choice" | "quantity" | "conclusion", choiceId?: string) => {
-      if (type === "conclusion") {
-        return;
-      }
-
       const newId = `step-${Date.now()}`;
-      const newStep: Step = {
-        id: newId,
-        type,
-        question: type === "text"
-          ? "Enter your question"
-          : type === "choice"
-          ? "Select an option"
-          : "Select items and quantities",
-        placeholder: type === "text" ? "Enter your answer" : undefined,
-        choices: type === "choice"
-          ? [
-              { id: `choice-${Date.now()}-1`, label: "Option 1", nextStepId: null },
-              { id: `choice-${Date.now()}-2`, label: "Option 2", nextStepId: null },
-              { id: `choice-${Date.now()}-3`, label: "Option 3", nextStepId: null },
-            ]
-          : undefined,
-        quantityChoices: type === "quantity"
-          ? [
-              { id: `qc-${Date.now()}-1`, label: "Item 1", price: 10, limit: null, isNoThanks: false },
-              { id: `qc-${Date.now()}-2`, label: "Item 2", price: 15, limit: null, isNoThanks: false },
-              { id: `qc-${Date.now()}-3`, label: "No thanks", price: 0, limit: null, isNoThanks: true },
-            ]
-          : undefined,
-        nextStepId: type === "text" || type === "quantity" ? null : undefined,
-      };
+      const newStep: Step = type === "conclusion" 
+        ? {
+            id: newId,
+            type: "conclusion",
+            question: "Thank You!",
+            thankYouMessage: "Thank you for completing this form. Please review your answers and submit.",
+            submitButtonText: "Submit",
+          }
+        : {
+            id: newId,
+            type,
+            question: type === "text"
+              ? "Enter your question"
+              : type === "choice"
+              ? "Select an option"
+              : "Select items and quantities",
+            placeholder: type === "text" ? "Enter your answer" : undefined,
+            choices: type === "choice"
+              ? [
+                  { id: `choice-${Date.now()}-1`, label: "Option 1", nextStepId: null },
+                  { id: `choice-${Date.now()}-2`, label: "Option 2", nextStepId: null },
+                  { id: `choice-${Date.now()}-3`, label: "Option 3", nextStepId: null },
+                ]
+              : undefined,
+            quantityChoices: type === "quantity"
+              ? [
+                  { id: `qc-${Date.now()}-1`, label: "Item 1", price: 10, limit: null, isNoThanks: false },
+                  { id: `qc-${Date.now()}-2`, label: "Item 2", price: 15, limit: null, isNoThanks: false },
+                  { id: `qc-${Date.now()}-3`, label: "No thanks", price: 0, limit: null, isNoThanks: true },
+                ]
+              : undefined,
+            nextStepId: type === "text" || type === "quantity" ? null : undefined,
+          };
 
       const parentStep = graph.steps[parentStepId];
       const newSteps = { ...graph.steps, [newId]: newStep };

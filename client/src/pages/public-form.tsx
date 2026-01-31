@@ -651,6 +651,104 @@ export default function PublicForm() {
                       </Button>
                     </div>
                   </>
+                ) : currentStep.type === "conclusion" ? (
+                  <>
+                    <div className="text-center py-4">
+                      <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center mx-auto mb-4">
+                        <Check className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                      <p className="text-muted-foreground leading-relaxed">
+                        {currentStep.thankYouMessage || "Thank you for completing this form. Please review your answers and submit."}
+                      </p>
+                    </div>
+
+                    {history.length > 0 && (
+                      <div className="space-y-3 border-t pt-4">
+                        <p className="text-sm font-medium text-muted-foreground">Your Answers:</p>
+                        {history.map((stepId) => {
+                          const step = graph?.steps[stepId];
+                          if (!step) return null;
+                          const answer = answers[stepId];
+                          return (
+                            <div
+                              key={stepId}
+                              className="p-3 bg-muted rounded-md cursor-pointer hover-elevate text-sm"
+                              onClick={() => handleEditAnswer(stepId)}
+                              data-testid={`conclusion-answer-${stepId}`}
+                            >
+                              <p className="text-xs text-muted-foreground mb-1">{step.question}</p>
+                              {Array.isArray(answer) ? (
+                                <div className="space-y-0.5">
+                                  {(answer as QuantityAnswer[]).filter(qa => qa.quantity > 0).map(qa => (
+                                    <div key={qa.choiceId} className="flex justify-between">
+                                      <span>{qa.label}</span>
+                                      <span className="font-medium">{qa.quantity} x ${qa.price.toFixed(2)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="font-medium">{answer as string}</p>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {calculateTotal() > 0 && (
+                          <div className="p-3 bg-primary/10 rounded-md flex justify-between items-center">
+                            <span className="font-semibold">Total</span>
+                            <span className="text-lg font-bold">${calculateTotal().toFixed(2)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {!customerPhone && (
+                      <div className="space-y-2 border-t pt-4">
+                        <Label>Phone Number *</Label>
+                        <Input
+                          value={customerPhone}
+                          onChange={(e) => setCustomerPhone(e.target.value)}
+                          placeholder="+1 (555) 000-0000"
+                          type="tel"
+                          data-testid="input-conclusion-phone"
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 pt-2">
+                      {history.length > 0 && (
+                        <Button variant="outline" onClick={handleBack} className="gap-2">
+                          <ChevronLeft className="w-4 h-4" />
+                          Back
+                        </Button>
+                      )}
+                      <Button
+                        className="flex-1"
+                        onClick={() => {
+                          if (!customerPhone.trim()) {
+                            toast({
+                              title: "Phone number required",
+                              description: "Please enter your phone number to submit.",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+                          console.log("Form submission:", { answers, customerName, customerPhone });
+                          submitMutation.mutate();
+                        }}
+                        disabled={submitMutation.isPending}
+                        data-testid="button-conclusion-submit"
+                      >
+                        {submitMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Submitting...
+                          </>
+                        ) : (
+                          currentStep.submitButtonText || "Submit"
+                        )}
+                      </Button>
+                    </div>
+                  </>
                 ) : null}
               </CardContent>
             </Card>

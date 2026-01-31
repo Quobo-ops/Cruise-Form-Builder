@@ -17,7 +17,7 @@ export type QuantityChoice = z.infer<typeof quantityChoiceSchema>;
 // Step types for the form builder
 export const stepSchema = z.object({
   id: z.string(),
-  type: z.enum(["choice", "text", "quantity"]),
+  type: z.enum(["choice", "text", "quantity", "conclusion"]),
   question: z.string(),
   placeholder: z.string().optional(),
   choices: z.array(z.object({
@@ -27,6 +27,9 @@ export const stepSchema = z.object({
   })).optional(),
   quantityChoices: z.array(quantityChoiceSchema).optional(),
   nextStepId: z.string().nullable().optional(),
+  // For conclusion steps
+  thankYouMessage: z.string().optional(),
+  submitButtonText: z.string().optional(),
 });
 
 export type Step = z.infer<typeof stepSchema>;
