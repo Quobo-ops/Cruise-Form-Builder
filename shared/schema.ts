@@ -14,6 +14,16 @@ export const quantityChoiceSchema = z.object({
 
 export type QuantityChoice = z.infer<typeof quantityChoiceSchema>;
 
+// Info popup configuration for steps
+export const infoPopupSchema = z.object({
+  enabled: z.boolean().default(false),
+  header: z.string().optional(),
+  images: z.array(z.string()).optional(),
+  description: z.string().optional(),
+});
+
+export type InfoPopup = z.infer<typeof infoPopupSchema>;
+
 // Step types for the form builder
 export const stepSchema = z.object({
   id: z.string(),
@@ -30,6 +40,8 @@ export const stepSchema = z.object({
   // For conclusion steps
   thankYouMessage: z.string().optional(),
   submitButtonText: z.string().optional(),
+  // Informational popup for this step
+  infoPopup: infoPopupSchema.optional(),
 });
 
 export type Step = z.infer<typeof stepSchema>;
