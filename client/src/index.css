@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* LIGHT MODE - Ocean/Cruise Theme */
+/* LIGHT MODE - Elegant Nautical Cruise Theme */
 :root {
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
@@ -14,80 +14,91 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
 
-  --background: 200 20% 98%;
+  /* Cruise Color Palette */
+  --navy: 215 69% 13%;           /* #0A1D37 - Deep navy for trust/headers */
+  --teal: 173 58% 39%;           /* #2A9D8F - Soft teal for accents/CTAs */
+  --gold: 43 75% 66%;            /* #E9C46A - Muted gold for highlights */
+  --coral: 27 87% 67%;           /* #F4A261 - Soft coral for success */
+  --light: 210 40% 98%;          /* #F8FAFC - Crisp off-white */
+  --gray-blue: 214 32% 91%;      /* #E2E8F0 - Light gray-blue for cards */
 
-  --foreground: 210 40% 15%;
+  --background: 210 40% 98%;
 
-  --border: 200 20% 88%;
+  --foreground: 217 33% 17%;     /* #1E293B - Dark navy text */
+
+  --border: 214 32% 87%;
 
   --card: 0 0% 100%;
 
-  --card-foreground: 210 40% 15%;
+  --card-foreground: 217 33% 17%;
 
-  --card-border: 200 20% 90%;
+  --card-border: 214 32% 88%;
 
-  --sidebar: 205 35% 96%;
+  --sidebar: 215 50% 12%;        /* Dark navy sidebar */
 
-  --sidebar-foreground: 210 40% 20%;
+  --sidebar-foreground: 210 40% 95%;
 
-  --sidebar-border: 200 20% 88%;
+  --sidebar-border: 215 40% 20%;
 
-  --sidebar-primary: 199 89% 48%;
+  --sidebar-primary: 173 58% 39%;
 
   --sidebar-primary-foreground: 0 0% 100%;
 
-  --sidebar-accent: 199 60% 92%;
+  --sidebar-accent: 215 50% 18%;
 
-  --sidebar-accent-foreground: 199 89% 35%;
+  --sidebar-accent-foreground: 173 58% 60%;
 
-  --sidebar-ring: 199 89% 48%;
+  --sidebar-ring: 173 58% 39%;
 
   --popover: 0 0% 100%;
 
-  --popover-foreground: 210 40% 15%;
+  --popover-foreground: 217 33% 17%;
 
-  --popover-border: 200 20% 88%;
+  --popover-border: 214 32% 88%;
 
-  --primary: 199 89% 48%;
+  --primary: 173 58% 39%;        /* Soft teal - main CTA color */
 
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 200 25% 94%;
+  --secondary: 214 32% 93%;
 
-  --secondary-foreground: 210 40% 25%;
+  --secondary-foreground: 217 33% 25%;
 
-  --muted: 200 20% 94%;
+  --muted: 214 32% 93%;
 
-  --muted-foreground: 210 15% 45%;
+  --muted-foreground: 215 19% 40%;  /* #475569 - Charcoal */
 
-  --accent: 35 100% 50%;
+  --accent: 43 75% 66%;          /* Muted gold for accent */
 
-  --accent-foreground: 35 100% 15%;
+  --accent-foreground: 43 75% 15%;
 
   --destructive: 0 84% 60%;
 
   --destructive-foreground: 0 0% 100%;
 
-  --input: 200 20% 85%;
-  --ring: 199 89% 48%;
-  --chart-1: 199 89% 48%;
-  --chart-2: 35 100% 50%;
-  --chart-3: 160 60% 45%;
-  --chart-4: 280 60% 55%;
-  --chart-5: 340 70% 55%;
+  --success: 27 87% 67%;         /* Soft coral for success/positive */
+  --success-foreground: 27 87% 15%;
 
-  --font-sans: 'Inter', sans-serif;
-  --font-serif: Georgia, serif;
-  --font-mono: Menlo, monospace;
-  --radius: .5rem; /* 8px */
-  --shadow-2xs: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 6px 12px rgba(0, 0, 0, 0.08), 0 3px 6px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.10), 0 6px 12px rgba(0, 0, 0, 0.08);
-  --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.12), 0 10px 20px rgba(0, 0, 0, 0.10);
-  --shadow-2xl: 0 32px 64px rgba(0, 0, 0, 0.14);
+  --input: 214 32% 85%;
+  --ring: 173 58% 39%;
+  --chart-1: 173 58% 39%;        /* Teal */
+  --chart-2: 43 75% 66%;         /* Gold */
+  --chart-3: 27 87% 67%;         /* Coral */
+  --chart-4: 215 69% 25%;        /* Navy variant */
+  --chart-5: 173 50% 55%;        /* Light teal */
+
+  --font-sans: 'Inter', 'Montserrat', system-ui, sans-serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-mono: 'JetBrains Mono', Menlo, monospace;
+  --radius: .75rem; /* 12px - softer radius for cruise elegance */
+  --shadow-2xs: 0 1px 2px rgba(10, 29, 55, 0.04);
+  --shadow-xs: 0 1px 3px rgba(10, 29, 55, 0.06);
+  --shadow-sm: 0 2px 4px rgba(10, 29, 55, 0.06), 0 1px 2px rgba(10, 29, 55, 0.04);
+  --shadow: 0 4px 12px rgba(10, 29, 55, 0.07), 0 2px 4px rgba(10, 29, 55, 0.05);
+  --shadow-md: 0 4px 20px rgba(10, 29, 55, 0.08), 0 3px 6px rgba(10, 29, 55, 0.06);
+  --shadow-lg: 0 12px 24px rgba(10, 29, 55, 0.10), 0 6px 12px rgba(10, 29, 55, 0.08);
+  --shadow-xl: 0 20px 40px rgba(10, 29, 55, 0.12), 0 10px 20px rgba(10, 29, 55, 0.10);
+  --shadow-2xl: 0 32px 64px rgba(10, 29, 55, 0.14);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
@@ -132,77 +143,87 @@
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  --background: 210 25% 8%;
+  /* Dark mode cruise palette - elegant deep ocean */
+  --navy: 215 69% 13%;
+  --teal: 173 55% 45%;
+  --gold: 43 70% 55%;
+  --coral: 27 85% 60%;
+  --light: 215 40% 10%;
+  --gray-blue: 215 30% 18%;
 
-  --foreground: 200 20% 95%;
+  --background: 215 50% 8%;          /* Deep ocean navy */
 
-  --border: 210 20% 18%;
+  --foreground: 210 40% 95%;
 
-  --card: 210 25% 11%;
+  --border: 215 30% 18%;
 
-  --card-foreground: 200 20% 95%;
+  --card: 215 40% 12%;
 
-  --card-border: 210 20% 20%;
+  --card-foreground: 210 40% 95%;
 
-  --sidebar: 210 25% 10%;
+  --card-border: 215 30% 20%;
 
-  --sidebar-foreground: 200 20% 90%;
+  --sidebar: 215 50% 8%;
 
-  --sidebar-border: 210 20% 18%;
+  --sidebar-foreground: 210 40% 90%;
 
-  --sidebar-primary: 199 85% 55%;
+  --sidebar-border: 215 30% 18%;
+
+  --sidebar-primary: 173 55% 45%;
 
   --sidebar-primary-foreground: 0 0% 100%;
 
-  --sidebar-accent: 199 50% 20%;
+  --sidebar-accent: 215 40% 16%;
 
-  --sidebar-accent-foreground: 199 85% 70%;
+  --sidebar-accent-foreground: 173 55% 65%;
 
-  --sidebar-ring: 199 85% 55%;
+  --sidebar-ring: 173 55% 45%;
 
-  --popover: 210 25% 12%;
+  --popover: 215 40% 12%;
 
-  --popover-foreground: 200 20% 95%;
+  --popover-foreground: 210 40% 95%;
 
-  --popover-border: 210 20% 20%;
+  --popover-border: 215 30% 20%;
 
-  --primary: 199 85% 55%;
+  --primary: 173 55% 45%;            /* Soft teal - brighter for dark mode */
 
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 210 20% 18%;
+  --secondary: 215 30% 18%;
 
-  --secondary-foreground: 200 20% 85%;
+  --secondary-foreground: 210 40% 85%;
 
-  --muted: 210 20% 15%;
+  --muted: 215 30% 15%;
 
-  --muted-foreground: 200 15% 55%;
+  --muted-foreground: 210 20% 55%;
 
-  --accent: 35 90% 55%;
+  --accent: 43 70% 55%;              /* Gold - adjusted for dark mode */
 
-  --accent-foreground: 35 100% 95%;
+  --accent-foreground: 43 100% 95%;
 
   --destructive: 0 75% 55%;
 
   --destructive-foreground: 0 0% 100%;
 
-  /* Used as the border around inputs. Dark mode: Should be a border that is light enough to have high contrast when rendered on a --card background. More contrast than standard --border */
-  --input: 210 20% 25%;
-  --ring: 199 85% 55%;
-  --chart-1: 199 85% 55%;
-  --chart-2: 35 90% 55%;
-  --chart-3: 160 55% 50%;
-  --chart-4: 280 55% 60%;
-  --chart-5: 340 65% 60%;
+  --success: 27 85% 60%;
+  --success-foreground: 27 100% 95%;
 
-  --shadow-2xs: 0 1px 2px rgba(0, 0, 0, 0.15);
-  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.2);
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
-  --shadow: 0 4px 6px rgba(0, 0, 0, 0.22), 0 2px 4px rgba(0, 0, 0, 0.18);
-  --shadow-md: 0 6px 12px rgba(0, 0, 0, 0.25), 0 3px 6px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.3), 0 6px 12px rgba(0, 0, 0, 0.25);
-  --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.35), 0 10px 20px rgba(0, 0, 0, 0.3);
-  --shadow-2xl: 0 32px 64px rgba(0, 0, 0, 0.4);
+  --input: 215 30% 22%;
+  --ring: 173 55% 45%;
+  --chart-1: 173 55% 45%;            /* Teal */
+  --chart-2: 43 70% 55%;             /* Gold */
+  --chart-3: 27 85% 60%;             /* Coral */
+  --chart-4: 215 50% 35%;            /* Navy variant */
+  --chart-5: 173 45% 60%;            /* Light teal */
+
+  --shadow-2xs: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.4), 0 3px 6px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.45), 0 6px 12px rgba(0, 0, 0, 0.35);
+  --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.5), 0 10px 20px rgba(0, 0, 0, 0.4);
+  --shadow-2xl: 0 32px 64px rgba(0, 0, 0, 0.55);
 
 }
 
