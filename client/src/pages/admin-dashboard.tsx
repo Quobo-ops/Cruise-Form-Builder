@@ -458,7 +458,7 @@ export default function AdminDashboard() {
                             )}
                           </div>
                           <CardDescription className="mt-1 truncate">
-                            {getTemplateName(cruise.templateId)}
+                            {cruise.description || getTemplateName(cruise.templateId)}
                           </CardDescription>
                         </div>
                         <DropdownMenu>

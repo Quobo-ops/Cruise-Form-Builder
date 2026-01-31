@@ -88,6 +88,7 @@ export default function CruiseDetail() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/cruises", id] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/cruises"] });
       setIsEditing(false);
       toast({
         title: "Cruise updated",
