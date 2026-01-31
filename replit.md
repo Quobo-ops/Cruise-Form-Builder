@@ -99,6 +99,12 @@ npm run db:push      # Push schema changes to database
 - `SESSION_SECRET`: Secret for session encryption (required for production)
 
 ## Recent Changes
+- **Decision Tree Visualization** (Jan 2026)
+  - Added visual decision tree viewer showing form flow as a hierarchical tree
+  - Root nodes displayed in yellow/amber, decision nodes in blue, leaf nodes in green
+  - Branches shown with dashed borders for visual grouping
+  - Supports dark mode with appropriate color variants
+  - Handles converging branches where multiple choices lead to the same step
 - **Redesigned Template Builder with Cascading Graph View** (Jan 2026)
   - New visual graph builder showing steps with branching for choice options
   - Inline step editing within each node (no separate edit panel)
