@@ -6,6 +6,7 @@ import { randomBytes } from "crypto";
 import bcrypt from "bcrypt";
 import { z } from "zod";
 import { insertTemplateSchema, insertSubmissionSchema, graphSchema, quantityAnswerSchema } from "@shared/schema";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 
 declare module "express-session" {
   interface SessionData {
@@ -98,6 +99,9 @@ export async function registerRoutes(
       },
     })
   );
+
+  // Object storage routes for file uploads
+  registerObjectStorageRoutes(app);
 
   // Auth routes
   app.post("/api/auth/login", async (req, res) => {

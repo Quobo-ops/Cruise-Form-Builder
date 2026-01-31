@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  Ship, ArrowLeft, Copy, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Plus, Trash2, Info
+  Ship, ArrowLeft, Copy, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Upload, Trash2, Info
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -42,6 +42,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Cruise, Template, CruiseInventory, Submission, QuantityAnswer } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useUpload } from "@/hooks/use-upload";
 
 type CruiseWithCounts = Cruise & {
   submissionCount: number;
@@ -65,8 +66,24 @@ export default function CruiseDetail() {
   const [learnMoreHeader, setLearnMoreHeader] = useState("");
   const [learnMoreImages, setLearnMoreImages] = useState<string[]>([]);
   const [learnMoreDescription, setLearnMoreDescription] = useState("");
-  const [newImageUrl, setNewImageUrl] = useState("");
   const [previewImageIndex, setPreviewImageIndex] = useState(0);
+  
+  const { uploadFile, isUploading } = useUpload({
+    onSuccess: (response) => {
+      setLearnMoreImages(prev => [...prev, response.objectPath]);
+      toast({
+        title: "Image uploaded",
+        description: "Your image has been uploaded successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: error.message,
+      });
+    },
+  });
 
   const { data: cruise, isLoading: cruiseLoading } = useQuery<CruiseWithCounts>({
     queryKey: ["/api/cruises", id],
@@ -166,10 +183,11 @@ export default function CruiseDetail() {
     }
   }, [cruise?.learnMoreHeader, cruise?.learnMoreImages, cruise?.learnMoreDescription]);
 
-  const handleAddImage = () => {
-    if (newImageUrl.trim()) {
-      setLearnMoreImages([...learnMoreImages, newImageUrl.trim()]);
-      setNewImageUrl("");
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await uploadFile(file);
+      e.target.value = "";
     }
   };
 
@@ -661,62 +679,78 @@ export default function CruiseDetail() {
 
                 <div className="space-y-3">
                   <Label>Images</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={newImageUrl}
-                      onChange={(e) => setNewImageUrl(e.target.value)}
-                      placeholder="Enter image URL"
-                      onKeyDown={(e) => e.key === "Enter" && handleAddImage()}
-                      data-testid="input-learn-more-image-url"
+                  <div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="learn-more-image-upload"
+                      disabled={isUploading}
+                      data-testid="input-learn-more-image-file"
                     />
-                    <Button onClick={handleAddImage} data-testid="button-add-image">
-                      <Plus className="w-4 h-4" />
+                    <Button
+                      onClick={() => document.getElementById('learn-more-image-upload')?.click()}
+                      disabled={isUploading}
+                      className="gap-2"
+                      data-testid="button-upload-image"
+                    >
+                      {isUploading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Upload className="w-4 h-4" />
+                      )}
+                      {isUploading ? "Uploading..." : "Upload Image"}
                     </Button>
                   </div>
                   
                   {learnMoreImages.length > 0 && (
                     <div className="space-y-3">
-                      <div className="relative bg-muted rounded-md overflow-hidden">
-                        <img
-                          src={learnMoreImages[previewImageIndex]}
-                          alt={`Preview ${previewImageIndex + 1}`}
-                          className="w-full h-64 object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect fill='%23f0f0f0' width='100' height='100'/%3E%3Ctext x='50' y='50' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not found%3C/text%3E%3C/svg%3E";
-                          }}
-                        />
+                      <div className="flex items-center gap-2">
                         {learnMoreImages.length > 1 && (
-                          <>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="absolute left-2 top-1/2 -translate-y-1/2 bg-background/80"
-                              onClick={() => setPreviewImageIndex(prev => prev === 0 ? learnMoreImages.length - 1 : prev - 1)}
-                              data-testid="button-prev-image"
-                            >
-                              <ChevronLeft className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="absolute right-2 top-1/2 -translate-y-1/2 bg-background/80"
-                              onClick={() => setPreviewImageIndex(prev => prev === learnMoreImages.length - 1 ? 0 : prev + 1)}
-                              data-testid="button-next-image"
-                            >
-                              <ChevronRight className="w-4 h-4" />
-                            </Button>
-                          </>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="flex-shrink-0"
+                            onClick={() => setPreviewImageIndex(prev => prev === 0 ? learnMoreImages.length - 1 : prev - 1)}
+                            data-testid="button-prev-image"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </Button>
                         )}
-                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-background/80 px-2 py-1 rounded text-xs">
-                          {previewImageIndex + 1} / {learnMoreImages.length}
+                        
+                        <div className="relative flex-1 bg-muted rounded-md overflow-hidden">
+                          <img
+                            src={learnMoreImages[previewImageIndex]}
+                            alt={`Preview ${previewImageIndex + 1}`}
+                            className="w-full h-64 object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect fill='%23f0f0f0' width='100' height='100'/%3E%3Ctext x='50' y='50' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not found%3C/text%3E%3C/svg%3E";
+                            }}
+                          />
+                          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-background/80 px-2 py-1 rounded text-xs">
+                            {previewImageIndex + 1} / {learnMoreImages.length}
+                          </div>
                         </div>
+                        
+                        {learnMoreImages.length > 1 && (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="flex-shrink-0"
+                            onClick={() => setPreviewImageIndex(prev => prev === learnMoreImages.length - 1 ? 0 : prev + 1)}
+                            data-testid="button-next-image"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                       
                       <div className="space-y-2">
                         {learnMoreImages.map((url, index) => (
                           <div key={index} className="flex items-center gap-2 p-2 border rounded-md">
                             <Image className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                            <span className="text-sm truncate flex-1">{url}</span>
+                            <span className="text-sm truncate flex-1">Image {index + 1}</span>
                             <Button
                               variant="ghost"
                               size="icon"
