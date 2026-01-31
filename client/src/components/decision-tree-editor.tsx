@@ -20,6 +20,7 @@ import {
   DollarSign,
   CheckCircle2,
   X,
+  ArrowRight,
 } from "lucide-react";
 import type { FormGraph, Step, QuantityChoice } from "@shared/schema";
 
@@ -121,6 +122,7 @@ interface TreeNodeProps {
   onAddStep: (parentId: string, type: "text" | "choice" | "quantity" | "conclusion", choiceId?: string) => void;
   isRoot?: boolean;
   depth?: number;
+  visitedSteps?: Set<string>;
 }
 
 function TreeNode({
@@ -133,12 +135,27 @@ function TreeNode({
   onAddStep,
   isRoot = false,
   depth = 0,
+  visitedSteps = new Set(),
 }: TreeNodeProps) {
   const step = graph.steps[stepId];
   const [isEditing, setIsEditing] = useState(false);
   const isSelected = selectedStepId === stepId;
 
   if (!step) return null;
+
+  if (visitedSteps.has(stepId)) {
+    return (
+      <div className="flex flex-col items-center">
+        <Badge variant="outline" className="text-xs bg-muted/50" data-testid={`badge-continues-to-${stepId}`}>
+          <ArrowRight className="w-3 h-3 mr-1" />
+          Continues to: {step.question.slice(0, 25)}...
+        </Badge>
+      </div>
+    );
+  }
+
+  const newVisited = new Set(visitedSteps);
+  newVisited.add(stepId);
 
   const getNodeColors = () => {
     if (isRoot) {
@@ -438,71 +455,89 @@ function TreeNode({
         <div className="flex flex-col items-center mt-2">
           <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
           <div className="flex items-start gap-4">
-            {step.choices.map((choice, index) => {
-              const hasNextStep = choice.nextStepId && graph.steps[choice.nextStepId];
-              
-              return (
-                <div key={choice.id} className="flex flex-col items-center relative">
-                  {index === 0 && step.choices!.length > 1 && (
-                    <div 
-                      className="absolute top-0 left-1/2 h-px bg-gray-400 dark:bg-gray-500" 
-                      style={{ 
-                        width: `calc(${(step.choices!.length - 1) * 100}% + ${(step.choices!.length - 1) * 16}px)`,
-                      }}
-                    />
-                  )}
-                  
-                  {step.choices!.length > 1 && (
-                    <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
-                  )}
-                  
-                  <svg 
-                    width="10" 
-                    height="8" 
-                    viewBox="0 0 10 8" 
-                    className="text-gray-400 dark:text-gray-500 fill-current"
-                  >
-                    <polygon points="5,8 0,0 10,0" />
-                  </svg>
-
-                  <div className="mt-1 px-2 py-0.5 text-[10px] bg-muted rounded text-muted-foreground max-w-[120px] truncate">
-                    {choice.label}
-                  </div>
-                  
-                  {hasNextStep ? (
-                    <div className="flex flex-col items-center">
+            {(() => {
+              const renderedStepsInBranches = new Set<string>();
+              return step.choices!.map((choice, index) => {
+                const hasNextStep = choice.nextStepId && graph.steps[choice.nextStepId];
+                const isAlreadyRendered = choice.nextStepId && renderedStepsInBranches.has(choice.nextStepId);
+                
+                if (hasNextStep && choice.nextStepId) {
+                  renderedStepsInBranches.add(choice.nextStepId);
+                }
+                
+                return (
+                  <div key={choice.id} className="flex flex-col items-center relative">
+                    {index === 0 && step.choices!.length > 1 && (
+                      <div 
+                        className="absolute top-0 left-1/2 h-px bg-gray-400 dark:bg-gray-500" 
+                        style={{ 
+                          width: `calc(${(step.choices!.length - 1) * 100}% + ${(step.choices!.length - 1) * 16}px)`,
+                        }}
+                      />
+                    )}
+                    
+                    {step.choices!.length > 1 && (
                       <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
-                      <svg 
-                        width="10" 
-                        height="8" 
-                        viewBox="0 0 10 8" 
-                        className="text-gray-400 dark:text-gray-500 fill-current"
-                      >
-                        <polygon points="5,8 0,0 10,0" />
-                      </svg>
-                      <div className="mt-1">
-                        <TreeNode
-                          stepId={choice.nextStepId!}
-                          graph={graph}
-                          selectedStepId={selectedStepId}
-                          onSelectStep={onSelectStep}
-                          onUpdateStep={onUpdateStep}
-                          onDeleteStep={onDeleteStep}
-                          onAddStep={onAddStep}
-                          depth={depth + 1}
-                        />
-                      </div>
+                    )}
+                    
+                    <svg 
+                      width="10" 
+                      height="8" 
+                      viewBox="0 0 10 8" 
+                      className="text-gray-400 dark:text-gray-500 fill-current"
+                    >
+                      <polygon points="5,8 0,0 10,0" />
+                    </svg>
+
+                    <div className="mt-1 px-2 py-0.5 text-[10px] bg-muted rounded text-muted-foreground max-w-[120px] truncate">
+                      {choice.label}
                     </div>
-                  ) : (
-                    <AddStepButton
-                      parentStepId={stepId}
-                      choiceId={choice.id}
-                      onAddStep={onAddStep}
-                    />
-                  )}
-                </div>
-              );
-            })}
+                    
+                    {hasNextStep ? (
+                      isAlreadyRendered ? (
+                        <div className="flex flex-col items-center mt-2">
+                          <Badge variant="outline" className="text-xs bg-muted/50" data-testid={`badge-same-as-above-${choice.id}`}>
+                            <ArrowRight className="w-3 h-3 mr-1" />
+                            Same as above
+                          </Badge>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center">
+                          <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
+                          <svg 
+                            width="10" 
+                            height="8" 
+                            viewBox="0 0 10 8" 
+                            className="text-gray-400 dark:text-gray-500 fill-current"
+                          >
+                            <polygon points="5,8 0,0 10,0" />
+                          </svg>
+                          <div className="mt-1">
+                            <TreeNode
+                              stepId={choice.nextStepId!}
+                              graph={graph}
+                              selectedStepId={selectedStepId}
+                              onSelectStep={onSelectStep}
+                              onUpdateStep={onUpdateStep}
+                              onDeleteStep={onDeleteStep}
+                              onAddStep={onAddStep}
+                              depth={depth + 1}
+                              visitedSteps={newVisited}
+                            />
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      <AddStepButton
+                        parentStepId={stepId}
+                        choiceId={choice.id}
+                        onAddStep={onAddStep}
+                      />
+                    )}
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
       ) : step.type === "conclusion" ? (
@@ -530,6 +565,7 @@ function TreeNode({
                   onDeleteStep={onDeleteStep}
                   onAddStep={onAddStep}
                   depth={depth + 1}
+                  visitedSteps={newVisited}
                 />
               </div>
             </div>
