@@ -305,16 +305,17 @@ export default function PublicForm() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-primary/5 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <Card className="w-full max-w-md shadow-md border-border/50">
           <CardHeader className="text-center">
-            <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center mx-auto mb-3">
-              <Ship className="w-7 h-7 text-primary animate-pulse" />
+            <div className="w-14 h-14 rounded-xl bg-navy/10 flex items-center justify-center mx-auto mb-4">
+              <Ship className="w-8 h-8 text-navy animate-pulse" />
             </div>
-            <Skeleton className="h-6 w-3/4 mx-auto" />
+            <Skeleton className="h-7 w-3/4 mx-auto mb-2" />
+            <Skeleton className="h-4 w-1/2 mx-auto" />
           </CardHeader>
           <CardContent>
-            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-40 w-full rounded-lg" />
           </CardContent>
         </Card>
       </div>
@@ -323,17 +324,18 @@ export default function PublicForm() {
 
   if (error || !template) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-primary/5 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md text-center">
-          <CardContent className="py-12">
-            <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-              <Anchor className="w-8 h-8 text-destructive" />
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <Card className="w-full max-w-md text-center shadow-md border-border/50">
+          <CardContent className="py-16">
+            <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-6">
+              <Anchor className="w-10 h-10 text-destructive" />
             </div>
-            <h2 className="text-xl font-bold text-foreground mb-2">Form Not Found</h2>
-            <p className="text-muted-foreground mb-6">
+            <h2 className="font-serif text-2xl font-bold text-foreground mb-3">Form Not Found</h2>
+            <p className="text-muted-foreground mb-8 leading-relaxed">
               This booking form is no longer available or the link is invalid.
             </p>
-            <Button variant="outline" onClick={() => setLocation("/")}>
+            <Button variant="outline" onClick={() => setLocation("/")} className="gap-2">
+              <ArrowRight className="w-4 h-4 rotate-180" />
               Go to Homepage
             </Button>
           </CardContent>
@@ -344,19 +346,19 @@ export default function PublicForm() {
 
   if (isSubmitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-primary/5 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md text-center">
-          <CardContent className="py-12">
-            <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
-              <Check className="w-8 h-8 text-green-600 dark:text-green-400" />
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <Card className="w-full max-w-md text-center shadow-lg border-border/50">
+          <CardContent className="py-16">
+            <div className="w-20 h-20 rounded-full bg-coral/10 dark:bg-coral/20 flex items-center justify-center mx-auto mb-6">
+              <Check className="w-10 h-10 text-coral" />
             </div>
-            <h2 className="text-xl font-bold text-foreground mb-2">Booking Submitted!</h2>
-            <p className="text-muted-foreground mb-6">
-              Thank you for your submission. We&apos;ll be in touch soon.
+            <h2 className="font-serif text-2xl md:text-3xl font-bold text-foreground mb-3">Welcome Aboard!</h2>
+            <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
+              Thank you for your booking. We&apos;ll be in touch soon.
             </p>
-            <div className="flex items-center justify-center gap-2 text-muted-foreground">
-              <Ship className="w-5 h-5" />
-              <span>{cruise?.name || template.name}</span>
+            <div className="inline-flex items-center gap-3 px-4 py-2 bg-primary/10 rounded-full">
+              <Anchor className="w-5 h-5 text-primary" />
+              <span className="font-medium text-foreground">{cruise?.name || template.name}</span>
             </div>
           </CardContent>
         </Card>
@@ -365,35 +367,42 @@ export default function PublicForm() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-primary/5">
-      <header className="bg-background/80 backdrop-blur-sm sticky top-0 z-50 py-3">
-        <div className="container mx-auto px-4 flex items-center justify-end">
+    <div className="min-h-screen bg-background">
+      <header className="bg-background/80 backdrop-blur-sm sticky top-0 z-50 py-4 border-b border-border/30">
+        <div className="container mx-auto px-6 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Ship className="w-5 h-5 text-navy" />
+            <span className="font-serif text-lg text-foreground">CruiseBook</span>
+          </div>
           <ThemeToggle />
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 flex flex-col items-center">
+      <main className="container mx-auto px-6 py-10 flex flex-col items-center">
         <div className="w-full max-w-md">
-          <div className="text-center mb-6">
-            <div className="w-12 h-12 rounded-md bg-primary flex items-center justify-center mx-auto mb-3">
-              <Ship className="w-7 h-7 text-primary-foreground" />
+          <div className="text-center mb-8">
+            <div className="w-14 h-14 rounded-xl bg-navy flex items-center justify-center mx-auto mb-4 shadow-md">
+              <Ship className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-xl font-bold text-foreground">{cruise?.name || template.name}</h1>
+            <h1 className="font-serif text-2xl font-bold text-foreground tracking-tight">{cruise?.name || template.name}</h1>
             {cruise?.description && (
-              <p className="text-sm text-muted-foreground mt-1">{cruise.description}</p>
+              <p className="text-muted-foreground mt-2 leading-relaxed">{cruise.description}</p>
             )}
           </div>
 
-          <Progress value={progress} className="mb-6" />
+          <div className="mb-8">
+            <Progress value={progress} className="h-2" />
+            <p className="text-xs text-muted-foreground text-center mt-2">{progress}% complete</p>
+          </div>
 
           {showPhoneInput ? (
-            <Card>
+            <Card className="shadow-md border-border/50">
               <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Phone className="w-5 h-5" />
+                <CardTitle className="font-serif text-xl flex items-center gap-2">
+                  <Phone className="w-5 h-5 text-gold" />
                   Contact Information
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-base">
                   Please provide your phone number so we can reach you.
                 </CardDescription>
               </CardHeader>
@@ -427,10 +436,10 @@ export default function PublicForm() {
               </CardContent>
             </Card>
           ) : isReview ? (
-            <Card>
+            <Card className="shadow-md border-border/50">
               <CardHeader>
-                <CardTitle>Review Your Answers</CardTitle>
-                <CardDescription>
+                <CardTitle className="font-serif text-xl">Review Your Answers</CardTitle>
+                <CardDescription className="text-base">
                   Tap any answer to edit it before submitting.
                 </CardDescription>
               </CardHeader>
@@ -499,9 +508,9 @@ export default function PublicForm() {
               </CardContent>
             </Card>
           ) : currentStep ? (
-            <Card>
+            <Card className="shadow-md border-border/50">
               <CardHeader>
-                <CardTitle className="text-lg">{currentStep.question}</CardTitle>
+                <CardTitle className="font-serif text-xl">{currentStep.question}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {currentStep.type === "text" ? (
@@ -655,11 +664,11 @@ export default function PublicForm() {
         </div>
       </main>
 
-      <footer className="mt-auto py-6">
-        <div className="container mx-auto px-4 text-center">
-          <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
-            <Ship className="w-3 h-3" />
-            Powered by CruiseBook
+      <footer className="mt-auto py-8 border-t border-border/30">
+        <div className="container mx-auto px-6 text-center">
+          <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
+            <Ship className="w-4 h-4 text-navy" />
+            <span className="font-serif">CruiseBook</span>
           </p>
         </div>
       </footer>
