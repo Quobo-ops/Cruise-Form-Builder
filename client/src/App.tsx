@@ -11,6 +11,7 @@ import FormBuilder from "@/pages/form-builder";
 import FormPreview from "@/pages/form-preview";
 import PublicForm from "@/pages/public-form";
 import CruiseDetail from "@/pages/cruise-detail";
+import CruiseLearnMore from "@/pages/cruise-learn-more";
 
 function Router() {
   return (
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/admin/preview/:id" component={FormPreview} />
       <Route path="/form/:shareId" component={PublicForm} />
       <Route path="/fill/cruise/:cruiseId" component={PublicForm} />
+      <Route path="/cruise/:shareId/learn-more" component={CruiseLearnMore} />
       <Route component={NotFound} />
     </Switch>
   );

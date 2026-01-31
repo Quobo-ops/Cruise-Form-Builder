@@ -67,6 +67,9 @@ export default function PublicForm() {
         title: "Booking submitted!",
         description: "Thank you for your submission.",
       });
+      setTimeout(() => {
+        setLocation("/");
+      }, 2000);
     },
     onError: (error: any) => {
       toast({
@@ -353,8 +356,11 @@ export default function PublicForm() {
               <Check className="w-10 h-10 text-coral" />
             </div>
             <h2 className="font-serif text-2xl md:text-3xl font-bold text-foreground mb-3">Welcome Aboard!</h2>
-            <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
+            <p className="text-lg text-muted-foreground mb-4 leading-relaxed">
               Thank you for your booking. We&apos;ll be in touch soon.
+            </p>
+            <p className="text-sm text-muted-foreground mb-8">
+              Redirecting you to available cruises...
             </p>
             <div className="inline-flex items-center gap-3 px-4 py-2 bg-primary/10 rounded-full">
               <Anchor className="w-5 h-5 text-primary" />

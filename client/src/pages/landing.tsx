@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Ship, Anchor, Calendar, ArrowRight, Compass, Waves } from "lucide-react";
+import { Ship, Anchor, Calendar, ArrowRight, Compass, Waves, Info } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Cruise } from "@shared/schema";
@@ -106,7 +106,7 @@ export default function Landing() {
                       </div>
                     )}
                   </CardHeader>
-                  <CardContent className="pt-0">
+                  <CardContent className="pt-0 space-y-2">
                     <Button
                       className="w-full gap-2 h-11 text-base font-medium shadow-sm hover:shadow-md transition-all duration-200"
                       onClick={() => setLocation(`/form/${cruise.shareId}`)}
@@ -114,6 +114,15 @@ export default function Landing() {
                     >
                       Book Now
                       <ArrowRight className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full gap-2 h-11 text-base font-medium"
+                      onClick={() => setLocation(`/cruise/${cruise.shareId}/learn-more`)}
+                      data-testid={`button-learn-more-${cruise.id}`}
+                    >
+                      <Info className="w-4 h-4" />
+                      Learn More
                     </Button>
                   </CardContent>
                 </Card>
