@@ -27,12 +27,13 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { 
   Ship, ArrowLeft, Save, Eye, Plus, Trash2, Link as LinkIcon,
-  Loader2, MessageSquare, List, GripVertical, Check, Share2, ShoppingCart, DollarSign
+  Loader2, MessageSquare, List, GripVertical, Check, Share2, ShoppingCart, DollarSign, GitBranch
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Template, Step, FormGraph, QuantityChoice } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TemplateGraphViewer } from "@/components/template-graph-viewer";
 
 export default function FormBuilder() {
   const { id } = useParams<{ id: string }>();
@@ -45,6 +46,7 @@ export default function FormBuilder() {
   const [templateName, setTemplateName] = useState("");
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGraphViewerOpen, setIsGraphViewerOpen] = useState(false);
 
   const { data: template, isLoading } = useQuery<Template>({
     queryKey: ["/api/templates", id],
@@ -318,6 +320,16 @@ export default function FormBuilder() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <ThemeToggle />
+            <Button 
+              variant="outline" 
+              className="gap-2" 
+              onClick={() => setIsGraphViewerOpen(true)}
+              disabled={!graph || Object.keys(graph.steps).length === 0}
+              data-testid="button-review-flow"
+            >
+              <GitBranch className="w-4 h-4" />
+              <span className="hidden sm:inline">Review</span>
+            </Button>
             <Link href={`/admin/preview/${id}`}>
               <Button variant="outline" className="gap-2" data-testid="button-preview">
                 <Eye className="w-4 h-4" />
@@ -743,6 +755,14 @@ export default function FormBuilder() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {graph && (
+        <TemplateGraphViewer
+          graph={graph}
+          open={isGraphViewerOpen}
+          onOpenChange={setIsGraphViewerOpen}
+        />
+      )}
     </div>
   );
 }
