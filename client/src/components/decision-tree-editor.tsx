@@ -496,9 +496,9 @@ function TreeNode({
                     {hasNextStep ? (
                       isAlreadyRendered ? (
                         <div className="flex flex-col items-center mt-2">
-                          <Badge variant="outline" className="text-xs bg-muted/50" data-testid={`badge-same-as-above-${choice.id}`}>
+                          <Badge variant="outline" className="text-xs bg-muted/50" data-testid={`badge-goes-to-${choice.id}`}>
                             <ArrowRight className="w-3 h-3 mr-1" />
-                            Same as above
+                            {graph.steps[choice.nextStepId!]?.question?.slice(0, 20) || "Next step"}...
                           </Badge>
                         </div>
                       ) : (
