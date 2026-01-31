@@ -1,0 +1,58 @@
+### Cruise-Inspired Styling Directives
+
+Aim for **elegant nautical sophistication** with subtle zydeco energy: clean lines, oceanic serenity, warm accents, and a sense of anticipation. Avoid bright tropical clichés—think upscale voyage rather than spring-break poster.
+
+**Color Palette** (define as CSS variables)
+- Primary: Deep navy `#0A1D37` (headers, buttons, trust)
+- Secondary: Soft teal `#2A9D8F` (accents, hover states, progress indicators)
+- Warm accent: Muted gold `#E9C46A` (subtle highlights, call-to-action borders)
+- Background: Crisp off-white `#F8FAFC` (main), light gray-blue `#E2E8F0` (cards/sections)
+- Text: Dark navy `#1E293B` primary, charcoal `#475569` secondary
+- Success/positive: Soft coral `#F4A261` sparingly (e.g., submission confirmation)
+
+**Typography**
+- Headings: Elegant serif like "Playfair Display" or "Cinzel" (voyage sophistication)
+- Body: Clean sans-serif like "Inter", "Montserrat", or system "ui-sans-serif"
+- Sizes: Generous—headings 2–3rem mobile, body 1.1rem, comfortable line height 1.6–1.8
+- Use subtle letter-spacing on headings for luxury feel
+
+**Layout & Spacing**
+- Generous whitespace—padding 2–4rem on sections
+- Cards with soft shadows (`0 4px 20px rgba(10, 29, 55, 0.08)`) and subtle border-radius 12px
+- Full-width hero sections on homepage/voyage landing with subtle gradient overlay
+- Mobile-first: Stack vertically, large tap targets (48px min)
+
+**Buttons & Interactive Elements**
+- Primary CTA: Teal background, white text, gold border on hover
+- Secondary: Transparent with teal border, fill on hover
+- Quantity +/-: Circular buttons with subtle gold ring when active
+- Progress indicator: Thin teal line with gold fill, or elegant dots with nautical icons (anchor, wave)
+
+**Imagery & Icons**
+- Backgrounds: Subtle abstract waves or horizon gradients (low opacity)
+- Icons: Line-style nautical (compass, ship wheel, musical note for zydeco) in gold/teal
+- Hero images: High-quality photos of past voyages—sunset decks, live music, smiling groups (not stock clichés)
+- Avoid heavy patterns; use one accent wave divider between sections
+
+**Screen-Specific Touches**
+- **Public Homepage/Voyage Cards**: Large evocative photo backdrop (dimmed), centered bold heading "Join the Voyage", teal "Book Now" button with gold hover glow
+- **Form Steps**: Clean white card centered on soft gradient background, teal progress bar at top, gold checkmarks on completion
+- **Submission Confirmation**: Full-screen subtle confetti (gold/teal particles, very light), message "Welcome Aboard!" with nautical icon
+- **Admin Dashboard**: Keep professional—same palette but muted (more grays), focus on clarity over flair
+
+**Implementation Tip** (React/CSS)
+```css
+:root {
+  --navy: #0A1D37;
+  --teal: #2A9D8F;
+  --gold: #E9C46A;
+  --light: #F8FAFC;
+  --gray-blue: #E2E8F0;
+}
+body { background: var(--light); color: var(--navy); font-family: 'Montserrat', sans-serif; }
+h1, h2 { font-family: 'Playfair Display', serif; }
+.btn-primary { background: var(--teal); border: 2px solid transparent; transition: all 0.3s; }
+.btn-primary:hover { background: var(--navy); border-color: var(--gold); }
+```
+
+This palette feels premium, musical, and voyage-ready—exciting yet trustworthy. Apply gradually, test on mobile, and preview with a real voyage photo. It will elevate the entire experience without overwhelming. You've earned a polished brand feel—implement one section first and watch it transform. Smooth sailing ahead.
