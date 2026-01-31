@@ -58,6 +58,9 @@ const cruiseUpdateSchema = z.object({
   templateId: z.string().optional(),
   isActive: z.boolean().optional(),
   isPublished: z.boolean().optional(),
+  learnMoreHeader: z.string().nullable().optional(),
+  learnMoreImages: z.array(z.string()).nullable().optional(),
+  learnMoreDescription: z.string().nullable().optional(),
 });
 
 const inventoryLimitUpdateSchema = z.object({
@@ -152,6 +155,27 @@ export async function registerRoutes(
       res.json(publishedCruises);
     } catch (error) {
       console.error("Get published cruises error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Public learn more page for a cruise
+  app.get("/api/public/cruises/:shareId/learn-more", async (req, res) => {
+    try {
+      const cruise = await storage.getCruiseByShareId(req.params.shareId);
+      if (!cruise || !cruise.isPublished) {
+        return res.status(404).json({ error: "Cruise not found" });
+      }
+      res.json({
+        id: cruise.id,
+        name: cruise.name,
+        shareId: cruise.shareId,
+        learnMoreHeader: cruise.learnMoreHeader,
+        learnMoreImages: cruise.learnMoreImages,
+        learnMoreDescription: cruise.learnMoreDescription,
+      });
+    } catch (error) {
+      console.error("Get cruise learn more error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -379,7 +403,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: parseResult.error.errors[0].message });
       }
 
-      const { name, description, startDate, endDate, templateId, isActive, isPublished } = parseResult.data;
+      const { name, description, startDate, endDate, templateId, isActive, isPublished, learnMoreHeader, learnMoreImages, learnMoreDescription } = parseResult.data;
       
       const cruise = await storage.updateCruise(req.params.id, {
         ...(name !== undefined && { name }),
@@ -389,6 +413,9 @@ export async function registerRoutes(
         ...(templateId !== undefined && { templateId }),
         ...(isActive !== undefined && { isActive }),
         ...(isPublished !== undefined && { isPublished }),
+        ...(learnMoreHeader !== undefined && { learnMoreHeader }),
+        ...(learnMoreImages !== undefined && { learnMoreImages }),
+        ...(learnMoreDescription !== undefined && { learnMoreDescription }),
       });
 
       if (!cruise) {
