@@ -34,8 +34,9 @@ import {
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  Ship, ArrowLeft, Copy, ExternalLink, Users, Package, Edit, Loader2, Save, Phone, User
+  Ship, ArrowLeft, Copy, Users, Package, Edit, Loader2, Save, Phone, User
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Cruise, Template, CruiseInventory, Submission, QuantityAnswer } from "@shared/schema";
@@ -250,329 +251,326 @@ export default function CruiseDetail() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 space-y-6">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div>
-                <CardTitle>{cruise.name}</CardTitle>
-                <CardDescription className="mt-1">
-                  {cruise.description || "No description"}
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                {cruise.isActive ? (
-                  <Badge variant="default" className="bg-green-600">Active</Badge>
-                ) : (
-                  <Badge variant="secondary">Inactive</Badge>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid sm:grid-cols-3 gap-4">
-              <div className="flex items-center gap-3 p-4 bg-muted rounded-md">
-                <Users className="w-8 h-8 text-primary" />
-                <div>
-                  <p className="text-2xl font-bold">{cruise.submissionCount}</p>
-                  <p className="text-sm text-muted-foreground">Total Signups</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-4 bg-muted rounded-md">
-                <Package className="w-8 h-8 text-primary" />
-                <div>
-                  <p className="text-2xl font-bold">{inventory?.length || 0}</p>
-                  <p className="text-sm text-muted-foreground">Tracked Items</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-4 bg-muted rounded-md">
-                <ExternalLink className="w-8 h-8 text-primary" />
-                <div>
-                  <p className="text-sm font-medium truncate">/form/{cruise.shareId}</p>
-                  <p className="text-sm text-muted-foreground">Public Link</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <main className="container mx-auto px-4 py-6 space-y-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-semibold truncate">{cruise.name}</h1>
+            {cruise.description && (
+              <p className="text-sm text-muted-foreground mt-0.5 truncate">{cruise.description}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Badge variant="secondary" className="gap-1">
+              <Users className="w-3 h-3" />
+              {cruise.submissionCount}
+            </Badge>
+            <Badge variant="secondary" className="gap-1">
+              <Package className="w-3 h-3" />
+              {inventory?.length || 0}
+            </Badge>
+            {cruise.isActive ? (
+              <Badge variant="default" className="bg-green-600">Active</Badge>
+            ) : (
+              <Badge variant="secondary">Inactive</Badge>
+            )}
+          </div>
+        </div>
 
-        {inventory && inventory.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="w-5 h-5" />
-                Inventory Tracking
-              </CardTitle>
-              <CardDescription>
-                Track quantities and manage stock limits for items with quantity selection.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {/* Mobile view - cards */}
-              <div className="md:hidden space-y-4">
-                {inventory.map((item) => (
-                  <div key={item.id} className="p-4 border rounded-md space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium">{item.choiceLabel}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {getStepQuestion(item.stepId)}
-                        </p>
-                      </div>
-                      {isSoldOut(item) ? (
-                        <Badge variant="destructive">Sold Out</Badge>
-                      ) : (
-                        <Badge variant="outline">Available</Badge>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Price:</span>
-                        <span className="ml-2 font-medium">{formatPrice(item.price)}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Ordered:</span>
-                        <span className="ml-2 font-medium">{item.totalOrdered}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Total:</span>
-                        <span className="ml-2 font-medium">{formatPrice(Number(item.price) * item.totalOrdered)}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Remaining:</span>
-                        <span className="ml-2 font-medium">{getRemaining(item)}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between pt-2 border-t">
-                      <span className="text-sm text-muted-foreground">Stock Limit:</span>
-                      {editingLimit?.stepId === item.stepId && editingLimit?.choiceId === item.choiceId ? (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="number"
-                            min="0"
-                            value={editingLimit.value}
-                            onChange={(e) => setEditingLimit({ ...editingLimit, value: e.target.value })}
-                            className="w-20 h-8"
-                            data-testid={`input-limit-mobile-${item.choiceId}`}
-                          />
-                          <Button
-                            size="sm"
-                            onClick={() => updateLimitMutation.mutate({
-                              stepId: item.stepId,
-                              choiceId: item.choiceId,
-                              limit: editingLimit.value ? parseInt(editingLimit.value) : null,
-                            })}
-                            disabled={updateLimitMutation.isPending}
-                          >
-                            {updateLimitMutation.isPending ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
+        <Tabs defaultValue="inventory" className="w-full">
+          <TabsList>
+            <TabsTrigger value="inventory" className="gap-1.5" data-testid="tab-inventory">
+              <Package className="w-4 h-4" />
+              <span className="hidden sm:inline">Inventory</span>
+            </TabsTrigger>
+            <TabsTrigger value="clients" className="gap-1.5" data-testid="tab-clients">
+              <Users className="w-4 h-4" />
+              <span className="hidden sm:inline">Clients</span>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="inventory">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Inventory Tracking</CardTitle>
+                <CardDescription>
+                  Manage stock limits for items with quantity selection.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {inventory && inventory.length > 0 ? (
+                  <>
+                    {/* Mobile view - cards */}
+                    <div className="md:hidden space-y-4">
+                      {inventory.map((item) => (
+                        <div key={item.id} className="p-4 border rounded-md space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium">{item.choiceLabel}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {getStepQuestion(item.stepId)}
+                              </p>
+                            </div>
+                            {isSoldOut(item) ? (
+                              <Badge variant="destructive">Sold Out</Badge>
                             ) : (
-                              <Save className="w-3 h-3" />
+                              <Badge variant="outline">Available</Badge>
                             )}
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingLimit({
-                            stepId: item.stepId,
-                            choiceId: item.choiceId,
-                            value: item.stockLimit?.toString() || "",
-                          })}
-                          data-testid={`button-edit-limit-mobile-${item.choiceId}`}
-                        >
-                          {item.stockLimit ?? "Unlimited"}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              
-              {/* Desktop view - table */}
-              <div className="hidden md:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead>Price</TableHead>
-                      <TableHead className="text-center">Ordered</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-center">Limit</TableHead>
-                      <TableHead className="text-center">Remaining</TableHead>
-                      <TableHead className="text-center">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {inventory.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{item.choiceLabel}</p>
-                            <p className="text-xs text-muted-foreground truncate max-w-48">
-                              {getStepQuestion(item.stepId)}
-                            </p>
                           </div>
-                        </TableCell>
-                        <TableCell>{formatPrice(item.price)}</TableCell>
-                        <TableCell className="text-center font-medium">{item.totalOrdered}</TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatPrice(Number(item.price) * item.totalOrdered)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {editingLimit?.stepId === item.stepId && editingLimit?.choiceId === item.choiceId ? (
-                            <div className="flex items-center gap-2 justify-center">
-                              <Input
-                                type="number"
-                                min="0"
-                                value={editingLimit.value}
-                                onChange={(e) => setEditingLimit({ ...editingLimit, value: e.target.value })}
-                                className="w-20 h-8"
-                                data-testid={`input-limit-${item.choiceId}`}
-                              />
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Price:</span>
+                              <span className="ml-2 font-medium">{formatPrice(item.price)}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Ordered:</span>
+                              <span className="ml-2 font-medium">{item.totalOrdered}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Total:</span>
+                              <span className="ml-2 font-medium">{formatPrice(Number(item.price) * item.totalOrdered)}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Remaining:</span>
+                              <span className="ml-2 font-medium">{getRemaining(item)}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between pt-2 border-t">
+                            <span className="text-sm text-muted-foreground">Stock Limit:</span>
+                            {editingLimit?.stepId === item.stepId && editingLimit?.choiceId === item.choiceId ? (
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  value={editingLimit.value}
+                                  onChange={(e) => setEditingLimit({ ...editingLimit, value: e.target.value })}
+                                  className="w-20 h-8"
+                                  data-testid={`input-limit-mobile-${item.choiceId}`}
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={() => updateLimitMutation.mutate({
+                                    stepId: item.stepId,
+                                    choiceId: item.choiceId,
+                                    limit: editingLimit.value ? parseInt(editingLimit.value) : null,
+                                  })}
+                                  disabled={updateLimitMutation.isPending}
+                                >
+                                  {updateLimitMutation.isPending ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Save className="w-3 h-3" />
+                                  )}
+                                </Button>
+                              </div>
+                            ) : (
                               <Button
+                                variant="ghost"
                                 size="sm"
-                                onClick={() => updateLimitMutation.mutate({
+                                onClick={() => setEditingLimit({
                                   stepId: item.stepId,
                                   choiceId: item.choiceId,
-                                  limit: editingLimit.value ? parseInt(editingLimit.value) : null,
+                                  value: item.stockLimit?.toString() || "",
                                 })}
-                                disabled={updateLimitMutation.isPending}
+                                data-testid={`button-edit-limit-mobile-${item.choiceId}`}
                               >
-                                {updateLimitMutation.isPending ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <Save className="w-3 h-3" />
-                                )}
+                                {item.stockLimit ?? "Unlimited"}
                               </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setEditingLimit({
-                                stepId: item.stepId,
-                                choiceId: item.choiceId,
-                                value: item.stockLimit?.toString() || "",
-                              })}
-                              data-testid={`button-edit-limit-${item.choiceId}`}
-                            >
-                              {item.stockLimit ?? "Unlimited"}
-                            </Button>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {getRemaining(item)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {isSoldOut(item) ? (
-                            <Badge variant="destructive">Sold Out</Badge>
-                          ) : (
-                            <Badge variant="outline">Available</Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              Submitted Clients
-            </CardTitle>
-            <CardDescription>
-              View all signups for this cruise.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {submissions && submissions.length > 0 ? (
-              <>
-                {/* Mobile view - cards */}
-                <div className="md:hidden space-y-3">
-                  {submissions.map((submission) => (
-                    <div 
-                      key={submission.id} 
-                      className="p-4 border rounded-md hover-elevate cursor-pointer"
-                      onClick={() => setSelectedSubmission(submission)}
-                      data-testid={`card-submission-${submission.id}`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                            <User className="w-5 h-5 text-primary" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-medium truncate">{submission.customerName || "Unknown"}</p>
-                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                              <Phone className="w-3 h-3 flex-shrink-0" />
-                              <span className="truncate">{submission.customerPhone || "N/A"}</span>
-                            </div>
+                            )}
                           </div>
                         </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-xs text-muted-foreground">
-                            {submission.createdAt ? new Date(submission.createdAt).toLocaleDateString() : "N/A"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                
-                {/* Desktop view - table */}
-                <div className="hidden md:block">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Phone</TableHead>
-                        <TableHead>Submitted</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {submissions.map((submission) => (
-                        <TableRow key={submission.id}>
-                          <TableCell className="font-medium">
-                            {submission.customerName || "Unknown"}
-                          </TableCell>
-                          <TableCell>
-                            {submission.customerPhone || "N/A"}
-                          </TableCell>
-                          <TableCell>
-                            {submission.createdAt ? new Date(submission.createdAt).toLocaleDateString() : "N/A"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setSelectedSubmission(submission)}
-                              data-testid={`button-view-submission-${submission.id}`}
-                            >
-                              View Details
-                            </Button>
-                          </TableCell>
-                        </TableRow>
                       ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </>
-            ) : (
-              <div className="text-center py-8">
-                <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">No submissions yet.</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                    </div>
+                    
+                    {/* Desktop view - table */}
+                    <div className="hidden md:block">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Item</TableHead>
+                            <TableHead>Price</TableHead>
+                            <TableHead className="text-center">Ordered</TableHead>
+                            <TableHead className="text-right">Total</TableHead>
+                            <TableHead className="text-center">Limit</TableHead>
+                            <TableHead className="text-center">Remaining</TableHead>
+                            <TableHead className="text-center">Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {inventory.map((item) => (
+                            <TableRow key={item.id}>
+                              <TableCell>
+                                <div>
+                                  <p className="font-medium">{item.choiceLabel}</p>
+                                  <p className="text-xs text-muted-foreground truncate max-w-48">
+                                    {getStepQuestion(item.stepId)}
+                                  </p>
+                                </div>
+                              </TableCell>
+                              <TableCell>{formatPrice(item.price)}</TableCell>
+                              <TableCell className="text-center font-medium">{item.totalOrdered}</TableCell>
+                              <TableCell className="text-right font-medium">
+                                {formatPrice(Number(item.price) * item.totalOrdered)}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {editingLimit?.stepId === item.stepId && editingLimit?.choiceId === item.choiceId ? (
+                                  <div className="flex items-center gap-2 justify-center">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      value={editingLimit.value}
+                                      onChange={(e) => setEditingLimit({ ...editingLimit, value: e.target.value })}
+                                      className="w-20 h-8"
+                                      data-testid={`input-limit-${item.choiceId}`}
+                                    />
+                                    <Button
+                                      size="sm"
+                                      onClick={() => updateLimitMutation.mutate({
+                                        stepId: item.stepId,
+                                        choiceId: item.choiceId,
+                                        limit: editingLimit.value ? parseInt(editingLimit.value) : null,
+                                      })}
+                                      disabled={updateLimitMutation.isPending}
+                                    >
+                                      {updateLimitMutation.isPending ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        <Save className="w-3 h-3" />
+                                      )}
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setEditingLimit({
+                                      stepId: item.stepId,
+                                      choiceId: item.choiceId,
+                                      value: item.stockLimit?.toString() || "",
+                                    })}
+                                    data-testid={`button-edit-limit-${item.choiceId}`}
+                                  >
+                                    {item.stockLimit ?? "Unlimited"}
+                                  </Button>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {getRemaining(item)}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {isSoldOut(item) ? (
+                                  <Badge variant="destructive">Sold Out</Badge>
+                                ) : (
+                                  <Badge variant="outline">Available</Badge>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                ) : (
+                  <div className="py-8 text-center">
+                    <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No inventory items to track.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="clients">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Client Submissions</CardTitle>
+                <CardDescription>
+                  View all signups for this cruise.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {submissions && submissions.length > 0 ? (
+                  <>
+                    {/* Mobile view - cards */}
+                    <div className="md:hidden space-y-3">
+                      {submissions.map((submission) => (
+                        <div 
+                          key={submission.id} 
+                          className="p-4 border rounded-md hover-elevate cursor-pointer"
+                          onClick={() => setSelectedSubmission(submission)}
+                          data-testid={`card-submission-${submission.id}`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                <User className="w-5 h-5 text-primary" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-medium truncate">{submission.customerName || "Unknown"}</p>
+                                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                  <Phone className="w-3 h-3 flex-shrink-0" />
+                                  <span className="truncate">{submission.customerPhone || "N/A"}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className="text-xs text-muted-foreground">
+                                {submission.createdAt ? new Date(submission.createdAt).toLocaleDateString() : "N/A"}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {/* Desktop view - table */}
+                    <div className="hidden md:block">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Phone</TableHead>
+                            <TableHead>Submitted</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {submissions.map((submission) => (
+                            <TableRow key={submission.id}>
+                              <TableCell className="font-medium">
+                                {submission.customerName || "Unknown"}
+                              </TableCell>
+                              <TableCell>
+                                {submission.customerPhone || "N/A"}
+                              </TableCell>
+                              <TableCell>
+                                {submission.createdAt ? new Date(submission.createdAt).toLocaleDateString() : "N/A"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setSelectedSubmission(submission)}
+                                  data-testid={`button-view-submission-${submission.id}`}
+                                >
+                                  View Details
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-8">
+                    <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No submissions yet.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </main>
 
       <Dialog open={isEditing} onOpenChange={setIsEditing}>
