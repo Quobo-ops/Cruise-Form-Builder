@@ -160,6 +160,12 @@ export default function CruiseDetail() {
     }
   };
 
+  useEffect(() => {
+    if (cruise) {
+      initLearnMoreFromCruise();
+    }
+  }, [cruise?.learnMoreHeader, cruise?.learnMoreImages, cruise?.learnMoreDescription]);
+
   const handleAddImage = () => {
     if (newImageUrl.trim()) {
       setLearnMoreImages([...learnMoreImages, newImageUrl.trim()]);
