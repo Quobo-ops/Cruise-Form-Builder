@@ -394,7 +394,7 @@ function TreeNode({
               {isRoot && (
                 <Badge className="text-[10px] px-1 py-0">Start</Badge>
               )}
-              {!isRoot && isSelected && isEditing && !showDeleteConfirm && (
+              {isSelected && isEditing && !showDeleteConfirm && (
                 <div className="flex items-center gap-0.5 ml-auto" onClick={(e) => e.stopPropagation()}>
                   <Button
                     variant="default"
@@ -421,18 +421,20 @@ function TreeNode({
                   >
                     <Info className="w-3 h-3" />
                   </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowDeleteConfirm(true);
-                    }}
-                    title="Delete step"
-                    data-testid={`button-delete-${stepId}`}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
+                  {!isRoot && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowDeleteConfirm(true);
+                      }}
+                      title="Delete step"
+                      data-testid={`button-delete-${stepId}`}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  )}
                   <Button
                     variant="secondary"
                     size="sm"
