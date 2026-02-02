@@ -516,30 +516,32 @@ export default function PublicForm() {
               </CardContent>
             </Card>
           ) : currentStep ? (
-            <Card className="shadow-md border-border/50">
-              <CardHeader className="flex flex-row items-start justify-between gap-2">
-                <CardTitle className="font-serif text-xl flex-1">{currentStep.question}</CardTitle>
-                {currentStep.infoPopup?.enabled && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowInfoPopup(true)}
-                    className="flex-shrink-0 animate-pulse border-blue-400 text-blue-500 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-400 dark:hover:bg-blue-900/20"
-                    title="More information"
-                    data-testid="button-step-info"
-                  >
-                    <Info className="w-4 h-4" />
-                  </Button>
-                )}
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {currentStep.infoPopup?.enabled && currentStep.infoPopup && (
+            <>
+              {currentStep.infoPopup?.enabled && (
+                <>
+                  <div className="fixed top-20 right-4 z-50">
+                    <Button
+                      size="icon"
+                      onClick={() => setShowInfoPopup(true)}
+                      className="rounded-full shadow-lg animate-pulse"
+                      title="More information"
+                      data-testid="button-step-info"
+                    >
+                      <Info className="w-5 h-5" />
+                    </Button>
+                  </div>
                   <StepInfoPopup
                     infoPopup={currentStep.infoPopup}
                     open={showInfoPopup}
                     onOpenChange={setShowInfoPopup}
                   />
-                )}
+                </>
+              )}
+              <Card className="shadow-md border-border/50">
+                <CardHeader>
+                  <CardTitle className="font-serif text-xl">{currentStep.question}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
                 {currentStep.type === "text" ? (
                   <>
                     <Input
@@ -779,6 +781,7 @@ export default function PublicForm() {
                 ) : null}
               </CardContent>
             </Card>
+            </>
           ) : (
             <Card>
               <CardContent className="py-8 text-center">

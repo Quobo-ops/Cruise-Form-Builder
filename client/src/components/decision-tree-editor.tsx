@@ -27,6 +27,7 @@ import {
   ImagePlus,
 } from "lucide-react";
 import type { FormGraph, Step, QuantityChoice, InfoPopup } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
 
 interface DecisionTreeEditorProps {
   graph: FormGraph;
@@ -34,6 +35,106 @@ interface DecisionTreeEditorProps {
   selectedStepId: string | null;
   onSelectStep: (stepId: string | null) => void;
   onSaveDraft?: () => void;
+}
+
+interface InfoImageUploaderProps {
+  stepId: string;
+  step: Step;
+  onUpdateStep: (stepId: string, updates: Partial<Step>) => void;
+}
+
+function InfoImageUploader({ stepId, step, onUpdateStep }: InfoImageUploaderProps) {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        variant: "destructive",
+        title: "Invalid file type",
+        description: "Please select an image file.",
+      });
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const response = await fetch("/api/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: file.name,
+          size: file.size,
+          contentType: file.type,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to get upload URL");
+
+      const { uploadURL, objectPath } = await response.json();
+
+      const uploadResponse = await fetch(uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+
+      if (!uploadResponse.ok) throw new Error("Failed to upload file");
+
+      const defaultInfo = { enabled: true, header: "", images: [] as string[], description: "" };
+      const currentInfo = step.infoPopup ? { ...defaultInfo, ...step.infoPopup } : defaultInfo;
+      const newImages = [...(currentInfo.images || []), objectPath];
+      onUpdateStep(stepId, { 
+        infoPopup: { ...currentInfo, images: newImages } 
+      });
+
+      toast({
+        title: "Image uploaded",
+        description: "Your image has been added.",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "Failed to upload image",
+      });
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  return (
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileSelect}
+        className="hidden"
+        data-testid={`input-info-image-upload-${stepId}`}
+      />
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={isUploading}
+        className="w-16 h-16 border-2 border-dashed border-muted-foreground/30 rounded-md flex items-center justify-center hover:border-primary hover:bg-primary/5 transition-colors disabled:opacity-50"
+        data-testid={`button-add-info-image-${stepId}`}
+      >
+        {isUploading ? (
+          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <Plus className="w-5 h-5 text-muted-foreground" />
+        )}
+      </button>
+    </>
+  );
 }
 
 interface AddStepButtonProps {
@@ -603,25 +704,43 @@ function TreeNode({
                       />
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       <Label className="text-xs opacity-70 flex items-center gap-1">
                         <ImagePlus className="w-3 h-3" />
-                        Images (one URL per line)
+                        Images
                       </Label>
-                      <Textarea
-                        value={(step.infoPopup?.images || []).join("\n")}
-                        onChange={(e) => {
-                          const defaultInfo = { enabled: true, header: "", images: [] as string[], description: "" };
-                          const currentInfo = step.infoPopup ? { ...defaultInfo, ...step.infoPopup } : defaultInfo;
-                          const images = e.target.value.split("\n").filter(url => url.trim());
-                          onUpdateStep(stepId, { 
-                            infoPopup: { ...currentInfo, images } 
-                          });
-                        }}
-                        className="min-h-16 text-xs bg-white/50 dark:bg-black/20"
-                        placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg"
-                        data-testid={`input-info-images-${stepId}`}
-                      />
+                      <div className="flex flex-wrap gap-2">
+                        {(step.infoPopup?.images || []).map((imageUrl, index) => (
+                          <div key={index} className="relative group">
+                            <img
+                              src={imageUrl}
+                              alt={`Info image ${index + 1}`}
+                              className="w-16 h-16 object-cover rounded-md border"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const defaultInfo = { enabled: true, header: "", images: [] as string[], description: "" };
+                                const currentInfo = step.infoPopup ? { ...defaultInfo, ...step.infoPopup } : defaultInfo;
+                                const newImages = [...(currentInfo.images || [])];
+                                newImages.splice(index, 1);
+                                onUpdateStep(stepId, { 
+                                  infoPopup: { ...currentInfo, images: newImages } 
+                                });
+                              }}
+                              className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                              data-testid={`button-remove-info-image-${stepId}-${index}`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                        <InfoImageUploader
+                          stepId={stepId}
+                          step={step}
+                          onUpdateStep={onUpdateStep}
+                        />
+                      </div>
                     </div>
 
                     <div className="space-y-1">
