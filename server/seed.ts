@@ -8,13 +8,13 @@ const SALT_ROUNDS = 10;
 export async function seedDatabase() {
   try {
     // Check if admin user exists
-    const [existingAdmin] = await db.select().from(users).where(eq(users.username, "admin"));
+    const [existingAdmin] = await db.select().from(users).where(eq(users.username, "EloiseDavid"));
     
     if (!existingAdmin) {
       console.log("Creating admin user...");
-      const hashedPassword = await bcrypt.hash("admin123", SALT_ROUNDS);
+      const hashedPassword = await bcrypt.hash("LumiSade2026!", SALT_ROUNDS);
       await db.insert(users).values({
-        username: "admin",
+        username: "EloiseDavid",
         password: hashedPassword,
       });
       console.log("Admin user created");
