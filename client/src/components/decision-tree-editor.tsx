@@ -28,6 +28,8 @@ import {
 } from "lucide-react";
 import type { FormGraph, Step, QuantityChoice, InfoPopup } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { StepInfoPopup } from "@/components/step-info-popup";
+import { Eye } from "lucide-react";
 
 interface DecisionTreeEditorProps {
   graph: FormGraph;
@@ -253,6 +255,7 @@ function TreeNode({
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showInfoEditor, setShowInfoEditor] = useState(false);
+  const [showInfoPreview, setShowInfoPreview] = useState(false);
   const isSelected = selectedStepId === stepId;
 
   const countDescendants = useCallback((currentStepId: string, visited: Set<string> = new Set()): number => {
@@ -762,7 +765,17 @@ function TreeNode({
                       />
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowInfoPreview(true)}
+                        className="text-[10px] h-6 px-2 gap-1"
+                        data-testid={`button-preview-info-${stepId}`}
+                      >
+                        <Eye className="w-3 h-3" />
+                        Preview
+                      </Button>
                       <Button
                         variant="default"
                         size="sm"
@@ -802,6 +815,12 @@ function TreeNode({
                         Close
                       </Button>
                     </div>
+
+                    <StepInfoPopup
+                      infoPopup={step.infoPopup!}
+                      open={showInfoPreview}
+                      onOpenChange={setShowInfoPreview}
+                    />
                   </div>
                 )}
               </div>
