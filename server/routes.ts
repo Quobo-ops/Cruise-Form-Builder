@@ -86,6 +86,12 @@ export async function registerRoutes(
     console.warn("Warning: SESSION_SECRET not set. Using fallback for development only.");
   }
 
+  // Trust proxy for production (Replit sits behind a proxy)
+  const isProduction = process.env.NODE_ENV === "production";
+  if (isProduction) {
+    app.set("trust proxy", 1);
+  }
+
   // Session middleware
   app.use(
     session({
@@ -93,9 +99,10 @@ export async function registerRoutes(
       resave: false,
       saveUninitialized: false,
       cookie: {
-        secure: process.env.NODE_ENV === "production",
+        secure: isProduction,
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        sameSite: isProduction ? "none" : "lax",
       },
     })
   );
