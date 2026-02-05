@@ -36,7 +36,6 @@ interface DecisionTreeEditorProps {
   onGraphChange: (graph: FormGraph, addHistory?: boolean) => void;
   selectedStepId: string | null;
   onSelectStep: (stepId: string | null) => void;
-  onSaveDraft?: () => void;
 }
 
 interface InfoImageUploaderProps {
@@ -228,7 +227,6 @@ interface TreeNodeProps {
   onUpdateStep: (stepId: string, updates: Partial<Step>) => void;
   onDeleteStep: (stepId: string) => void;
   onAddStep: (parentId: string, type: "text" | "choice" | "quantity" | "conclusion", choiceId?: string) => void;
-  onSaveDraft?: () => void;
   onRevertStep?: (stepId: string) => void;
   stepSnapshot?: Step | null;
   isRoot?: boolean;
@@ -244,7 +242,6 @@ function TreeNode({
   onUpdateStep,
   onDeleteStep,
   onAddStep,
-  onSaveDraft,
   onRevertStep,
   stepSnapshot,
   isRoot = false,
@@ -399,18 +396,6 @@ function TreeNode({
               )}
               {isSelected && isEditing && !showDeleteConfirm && (
                 <div className="flex items-center gap-0.5 ml-auto" onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSaveDraft?.();
-                    }}
-                    title="Save draft checkpoint"
-                    data-testid={`button-save-draft-${stepId}`}
-                  >
-                    <Check className="w-3 h-3" />
-                  </Button>
                   <Button
                     variant={step.infoPopup?.enabled ? "default" : "outline"}
                     size="sm"
@@ -781,13 +766,12 @@ function TreeNode({
                         size="sm"
                         onClick={() => {
                           setShowInfoEditor(false);
-                          onSaveDraft?.();
                         }}
                         className="text-[10px] h-6 px-2 gap-1"
-                        data-testid={`button-save-info-${stepId}`}
+                        data-testid={`button-close-info-${stepId}`}
                       >
                         <Check className="w-3 h-3" />
-                        Save Info
+                        Done
                       </Button>
                       <Button
                         variant="destructive"
@@ -899,7 +883,6 @@ function TreeNode({
                               onUpdateStep={onUpdateStep}
                               onDeleteStep={onDeleteStep}
                               onAddStep={onAddStep}
-                              onSaveDraft={onSaveDraft}
                               onRevertStep={onRevertStep}
                               depth={depth + 1}
                               visitedSteps={newVisited}
@@ -944,7 +927,6 @@ function TreeNode({
                   onUpdateStep={onUpdateStep}
                   onDeleteStep={onDeleteStep}
                   onAddStep={onAddStep}
-                  onSaveDraft={onSaveDraft}
                   onRevertStep={onRevertStep}
                   depth={depth + 1}
                   visitedSteps={newVisited}
@@ -968,7 +950,6 @@ export function DecisionTreeEditor({
   onGraphChange,
   selectedStepId,
   onSelectStep,
-  onSaveDraft,
 }: DecisionTreeEditorProps) {
   const stepSnapshotRef = useRef<{ [stepId: string]: Step }>({});
   const previousSelectedStepId = useRef<string | null>(null);
@@ -1188,7 +1169,6 @@ export function DecisionTreeEditor({
           onUpdateStep={handleUpdateStep}
           onDeleteStep={handleDeleteStep}
           onAddStep={handleAddStep}
-          onSaveDraft={onSaveDraft}
           onRevertStep={handleRevertStep}
           isRoot={true}
         />

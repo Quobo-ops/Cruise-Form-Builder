@@ -16,8 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  Ship, ArrowLeft, Save, Eye, 
-  Loader2, Share2, GitBranch, Undo2, Redo2
+  Ship, ArrowLeft, Eye, 
+  Loader2, Share2, GitBranch, Undo2, Redo2, Check, Cloud
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -35,11 +35,15 @@ export default function FormBuilder() {
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [templateName, setTemplateName] = useState("");
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"saved" | "saving" | "pending">("saved");
   
   const [graphHistory, setGraphHistory] = useState<FormGraph[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const isInitialized = useRef(false);
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingChangesRef = useRef(false);
+  const isSavingRef = useRef(false);
+  const lastSavedDataRef = useRef<{ name: string; graph: FormGraph | null }>({ name: "", graph: null });
 
   const { data: template, isLoading } = useQuery<Template>({
     queryKey: ["/api/templates", id],
@@ -57,6 +61,7 @@ export default function FormBuilder() {
         const deepClonedGraph = JSON.parse(JSON.stringify(template.graph));
         setGraphHistory([deepClonedGraph]);
         setHistoryIndex(0);
+        lastSavedDataRef.current = { name: template.name, graph: deepClonedGraph };
       }
       isInitialized.current = true;
     }
@@ -98,27 +103,118 @@ export default function FormBuilder() {
   }, []);
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (data: { name: string; graph: FormGraph | null }) => {
       return await apiRequest("PATCH", `/api/templates/${id}`, {
-        name: templateName,
-        graph,
+        name: data.name,
+        graph: data.graph,
       });
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/templates", id] });
-      toast({
-        title: "Changes saved",
-        description: "Your template has been updated.",
-      });
+    onSuccess: async (_response, variables) => {
+      lastSavedDataRef.current = { name: variables.name, graph: variables.graph };
+      pendingChangesRef.current = false;
+      isSavingRef.current = false;
+      setAutoSaveStatus("saved");
     },
     onError: () => {
+      isSavingRef.current = false;
+      setAutoSaveStatus("pending");
       toast({
-        title: "Error",
-        description: "Failed to save changes. Please try again.",
+        title: "Autosave failed",
+        description: "Your changes couldn't be saved. They'll retry automatically.",
         variant: "destructive",
       });
     },
   });
+
+  const performAutoSave = useCallback(() => {
+    if (!graph || !templateName || !isInitialized.current || isSavingRef.current) return;
+    
+    const currentData = JSON.stringify({ name: templateName, graph });
+    const savedData = JSON.stringify(lastSavedDataRef.current);
+    
+    if (currentData === savedData) {
+      setAutoSaveStatus("saved");
+      pendingChangesRef.current = false;
+      return;
+    }
+    
+    isSavingRef.current = true;
+    setAutoSaveStatus("saving");
+    saveMutation.mutate({ name: templateName, graph });
+  }, [graph, templateName, saveMutation]);
+
+  useEffect(() => {
+    if (!isInitialized.current || !graph) return;
+    
+    if (isSavingRef.current) {
+      return;
+    }
+    
+    const currentData = JSON.stringify({ name: templateName, graph });
+    const savedData = JSON.stringify(lastSavedDataRef.current);
+    
+    if (currentData === savedData) {
+      if (autoSaveStatus !== "saved") {
+        setAutoSaveStatus("saved");
+      }
+      pendingChangesRef.current = false;
+      return;
+    }
+    
+    pendingChangesRef.current = true;
+    if (autoSaveStatus !== "pending") {
+      setAutoSaveStatus("pending");
+    }
+    
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+    
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      performAutoSave();
+    }, 1500);
+    
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [graph, templateName, autoSaveStatus]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (pendingChangesRef.current && graph && templateName && !isSavingRef.current) {
+        if (autoSaveTimeoutRef.current) {
+          clearTimeout(autoSaveTimeoutRef.current);
+        }
+        isSavingRef.current = true;
+        saveMutation.mutate({ name: templateName, graph });
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden" && pendingChangesRef.current && graph && templateName && !isSavingRef.current) {
+        if (autoSaveTimeoutRef.current) {
+          clearTimeout(autoSaveTimeoutRef.current);
+        }
+        isSavingRef.current = true;
+        saveMutation.mutate({ name: templateName, graph });
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [graph, templateName, saveMutation]);
 
   const publishMutation = useMutation({
     mutationFn: async () => {
@@ -156,28 +252,12 @@ export default function FormBuilder() {
     return null;
   }
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    await saveMutation.mutateAsync();
-    setIsSaving(false);
-  };
-
   const handleGraphChange = (newGraph: FormGraph, addHistory: boolean = true) => {
     setGraph(newGraph);
     if (addHistory) {
       addToHistory(newGraph);
     }
   };
-
-  const handleSaveDraft = useCallback(() => {
-    if (graph) {
-      addToHistory(graph);
-      toast({
-        title: "Draft saved",
-        description: "Your current progress has been saved as a checkpoint.",
-      });
-    }
-  }, [graph, addToHistory, toast]);
 
   const stepCount = graph ? Object.keys(graph.steps).length : 0;
   const choiceBranchCount = graph 
@@ -248,6 +328,29 @@ export default function FormBuilder() {
                 <Redo2 className="w-4 h-4" />
               </Button>
             </div>
+            <div 
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted-foreground"
+              data-testid="autosave-status"
+            >
+              {autoSaveStatus === "saving" && (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span className="hidden sm:inline">Saving...</span>
+                </>
+              )}
+              {autoSaveStatus === "saved" && (
+                <>
+                  <Check className="w-3 h-3 text-green-500" />
+                  <span className="hidden sm:inline">Saved</span>
+                </>
+              )}
+              {autoSaveStatus === "pending" && (
+                <>
+                  <Cloud className="w-3 h-3" />
+                  <span className="hidden sm:inline">Unsaved</span>
+                </>
+              )}
+            </div>
             <ThemeToggle />
             <Link href={`/admin/preview/${id}`}>
               <Button variant="outline" className="gap-2" data-testid="button-preview">
@@ -255,20 +358,6 @@ export default function FormBuilder() {
                 <span className="hidden sm:inline">Preview</span>
               </Button>
             </Link>
-            <Button
-              variant="outline"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="gap-2"
-              data-testid="button-save"
-            >
-              {isSaving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              <span className="hidden sm:inline">Save</span>
-            </Button>
             <Button
               onClick={() => setIsPublishDialogOpen(true)}
               className="gap-2"
@@ -307,7 +396,6 @@ export default function FormBuilder() {
                 onGraphChange={handleGraphChange}
                 selectedStepId={selectedStepId}
                 onSelectStep={setSelectedStepId}
-                onSaveDraft={handleSaveDraft}
               />
             ) : (
               <div className="flex items-center justify-center py-16">
