@@ -17,6 +17,7 @@ CruiseBook is a full-stack web application for creating and filling dynamic book
 - Multi-step form wizard builder with directed graph structure
 - Three step types: Text input, Multiple choice, and Multi-choice with Quantity
 - Branching logic based on user selections
+- **Autosave**: Form builder automatically saves changes with 1.5 second debounce; saves on navigation away or browser close
 - **Cruise Management**: Create cruises linked to form templates with unique shareable links
 - **Inventory Tracking**: Track quantities and stock limits for items with quantity selection
 - **Customer Management**: View submitted clients with their full form answers
