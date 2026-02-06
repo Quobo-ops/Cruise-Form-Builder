@@ -3,7 +3,6 @@ import { Link, useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -323,23 +322,23 @@ export default function FormBuilder() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-          <div className="container mx-auto px-4 py-4">
+      <div className="h-screen flex flex-col bg-background">
+        <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50 flex-shrink-0">
+          <div className="px-4 py-4">
             <Skeleton className="h-10 w-48" />
           </div>
         </header>
-        <main className="container mx-auto px-4 py-8">
-          <Skeleton className="h-96" />
+        <main className="flex-1 px-4 py-8">
+          <Skeleton className="h-full" />
         </main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-4 flex-wrap">
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
+      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50 flex-shrink-0">
+        <div className="px-4 py-4 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
             <Link href="/admin/dashboard" className="flex items-center gap-2 text-muted-foreground hover-elevate rounded-md px-2 py-1">
               <ArrowLeft className="w-4 h-4" />
@@ -422,40 +421,36 @@ export default function FormBuilder() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6">
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <GitBranch className="w-5 h-5" />
-                Decision Tree Builder
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">{stepCount} steps</Badge>
-                {choiceBranchCount > 0 && (
-                  <Badge variant="secondary">{choiceBranchCount} branches</Badge>
-                )}
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Click on any node to edit it. Use the + buttons to add new steps or end branches.
-            </p>
-          </CardHeader>
-          <CardContent>
-            {graph ? (
-              <DecisionTreeEditor
-                graph={graph}
-                onGraphChange={handleGraphChange}
-                selectedStepId={selectedStepId}
-                onSelectStep={setSelectedStepId}
-              />
-            ) : (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-              </div>
+      <main className="flex-1 flex flex-col min-h-0">
+        <div className="px-4 py-3 border-b flex items-center justify-between gap-4 flex-wrap flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <GitBranch className="w-5 h-5 text-muted-foreground" />
+            <span className="text-lg font-semibold">Decision Tree Builder</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">{stepCount} steps</Badge>
+            {choiceBranchCount > 0 && (
+              <Badge variant="secondary">{choiceBranchCount} branches</Badge>
             )}
-          </CardContent>
-        </Card>
+            <span className="text-sm text-muted-foreground hidden md:inline">
+              Click on any node to edit it. Use the + buttons to add new steps or end branches.
+            </span>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto">
+          {graph ? (
+            <DecisionTreeEditor
+              graph={graph}
+              onGraphChange={handleGraphChange}
+              selectedStepId={selectedStepId}
+              onSelectStep={setSelectedStepId}
+            />
+          ) : (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          )}
+        </div>
       </main>
 
       <Dialog open={isPublishDialogOpen} onOpenChange={setIsPublishDialogOpen}>
