@@ -1,14 +1,31 @@
-import { 
-  type User, type InsertUser, 
+import {
+  type User, type InsertUser,
   type Template, type InsertTemplate,
   type Submission, type InsertSubmission,
   type Cruise, type InsertCruise,
   type CruiseInventory, type InsertCruiseInventory,
+  type AuditLog, type InsertAuditLog,
+  type NotificationSettings,
   users, templates, submissions, cruises, cruiseInventory,
+  auditLogs, notificationSettings,
   type QuantityAnswer
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, sql, and } from "drizzle-orm";
+import { eq, sql, and, isNull, ilike, or, desc } from "drizzle-orm";
+
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
 
 export interface IStorage {
   // Users
@@ -27,6 +44,7 @@ export interface IStorage {
 
   // Cruises
   getCruises(): Promise<Cruise[]>;
+  getCruisesPaginated(params: PaginationParams): Promise<PaginatedResult<Cruise & { submissionCount: number; unviewedCount: number }>>;
   getPublishedCruises(): Promise<Cruise[]>;
   getCruise(id: string): Promise<Cruise | undefined>;
   getCruiseByShareId(shareId: string): Promise<Cruise | undefined>;
@@ -50,10 +68,19 @@ export interface IStorage {
   // Submissions
   getSubmissions(templateId?: string): Promise<Submission[]>;
   getSubmissionsByCruise(cruiseId: string): Promise<Submission[]>;
+  getSubmissionsByCruisePaginated(cruiseId: string, params: PaginationParams): Promise<PaginatedResult<Submission>>;
   getSubmissionCountByCruise(cruiseId: string): Promise<number>;
   getUnviewedSubmissionCount(cruiseId: string): Promise<number>;
   markSubmissionsViewed(cruiseId: string): Promise<void>;
   createSubmission(submission: InsertSubmission): Promise<Submission>;
+
+  // Audit logs
+  createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
+  getAuditLogs(params: PaginationParams): Promise<PaginatedResult<AuditLog>>;
+
+  // Notification settings
+  getNotificationSettings(userId: string): Promise<NotificationSettings | undefined>;
+  upsertNotificationSettings(userId: string, settings: { emailOnSubmission?: boolean; emailAddress?: string | null }): Promise<NotificationSettings>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -73,23 +100,24 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  // Templates
+  // Templates (soft delete aware)
   async getTemplates(): Promise<Template[]> {
-    return await db.select().from(templates);
+    return await db.select().from(templates).where(isNull(templates.deletedAt));
   }
 
   async getTemplatesWithCruiseCounts(): Promise<(Template & { cruiseCount: number })[]> {
-    const allTemplates = await db.select().from(templates);
+    const allTemplates = await db.select().from(templates).where(isNull(templates.deletedAt));
     const cruiseCounts = await db
       .select({
         templateId: cruises.templateId,
         count: sql<number>`count(*)::int`,
       })
       .from(cruises)
+      .where(isNull(cruises.deletedAt))
       .groupBy(cruises.templateId);
-    
+
     const countMap = new Map(cruiseCounts.map(c => [c.templateId, c.count]));
-    
+
     return allTemplates.map(template => ({
       ...template,
       cruiseCount: countMap.get(template.id) || 0,
@@ -97,12 +125,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTemplate(id: string): Promise<Template | undefined> {
-    const [template] = await db.select().from(templates).where(eq(templates.id, id));
+    const [template] = await db.select().from(templates).where(
+      and(eq(templates.id, id), isNull(templates.deletedAt))
+    );
     return template;
   }
 
   async getTemplateByShareId(shareId: string): Promise<Template | undefined> {
-    const [template] = await db.select().from(templates).where(eq(templates.shareId, shareId));
+    const [template] = await db.select().from(templates).where(
+      and(eq(templates.shareId, shareId), isNull(templates.deletedAt))
+    );
     return template;
   }
 
@@ -115,34 +147,88 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db
       .update(templates)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(templates.id, id))
+      .where(and(eq(templates.id, id), isNull(templates.deletedAt)))
       .returning();
     return updated;
   }
 
   async deleteTemplate(id: string): Promise<boolean> {
-    // Check if any cruises reference this template
-    const linkedCruises = await db.select({ id: cruises.id }).from(cruises).where(eq(cruises.templateId, id));
+    // Check if any active cruises reference this template
+    const linkedCruises = await db.select({ id: cruises.id }).from(cruises).where(
+      and(eq(cruises.templateId, id), isNull(cruises.deletedAt))
+    );
     if (linkedCruises.length > 0) {
       throw new Error(`Cannot delete template: ${linkedCruises.length} cruise(s) are using it. Delete the cruises first.`);
     }
-    await db.delete(templates).where(eq(templates.id, id));
+    // Soft delete
+    await db.update(templates)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(eq(templates.id, id));
     return true;
   }
 
-  // Cruises
+  // Cruises (soft delete aware)
   async getCruises(): Promise<Cruise[]> {
-    return await db.select().from(cruises).orderBy(sql`${cruises.createdAt} DESC`);
+    return await db.select().from(cruises)
+      .where(isNull(cruises.deletedAt))
+      .orderBy(sql`${cruises.createdAt} DESC`);
+  }
+
+  // Paginated cruises with counts — fixes N+1 query
+  async getCruisesPaginated(params: PaginationParams): Promise<PaginatedResult<Cruise & { submissionCount: number; unviewedCount: number }>> {
+    const page = params.page || 1;
+    const limit = Math.min(params.limit || 20, 100);
+    const offset = (page - 1) * limit;
+
+    // Build where conditions
+    const conditions = [isNull(cruises.deletedAt)];
+    if (params.search) {
+      conditions.push(ilike(cruises.name, `%${params.search}%`));
+    }
+    const whereClause = and(...conditions);
+
+    // Get total count
+    const [{ count: total }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(cruises)
+      .where(whereClause);
+
+    // Get cruises with submission counts in a single query
+    const rows = await db
+      .select({
+        cruise: cruises,
+        submissionCount: sql<number>`COALESCE((SELECT count(*)::int FROM submissions WHERE submissions.cruise_id = ${cruises.id}), 0)`,
+        unviewedCount: sql<number>`COALESCE((SELECT count(*)::int FROM submissions WHERE submissions.cruise_id = ${cruises.id} AND submissions.is_viewed = false), 0)`,
+      })
+      .from(cruises)
+      .where(whereClause)
+      .orderBy(desc(cruises.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      data: rows.map(r => ({
+        ...r.cruise,
+        submissionCount: r.submissionCount,
+        unviewedCount: r.unviewedCount,
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async getPublishedCruises(): Promise<Cruise[]> {
     return await db.select().from(cruises)
-      .where(eq(cruises.isPublished, true))
+      .where(and(eq(cruises.isPublished, true), isNull(cruises.deletedAt)))
       .orderBy(sql`${cruises.startDate} ASC NULLS LAST`);
   }
 
   async getCruise(id: string): Promise<Cruise | undefined> {
-    const [cruise] = await db.select().from(cruises).where(eq(cruises.id, id));
+    const [cruise] = await db.select().from(cruises).where(
+      and(eq(cruises.id, id), isNull(cruises.deletedAt))
+    );
     return cruise;
   }
 
@@ -160,17 +246,16 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db
       .update(cruises)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(cruises.id, id))
+      .where(and(eq(cruises.id, id), isNull(cruises.deletedAt)))
       .returning();
     return updated;
   }
 
   async deleteCruise(id: string): Promise<boolean> {
-    await db.transaction(async (tx) => {
-      await tx.delete(cruiseInventory).where(eq(cruiseInventory.cruiseId, id));
-      await tx.delete(submissions).where(eq(submissions.cruiseId, id));
-      await tx.delete(cruises).where(eq(cruises.id, id));
-    });
+    // Soft delete the cruise (inventory and submissions remain intact)
+    await db.update(cruises)
+      .set({ deletedAt: new Date(), updatedAt: new Date(), isActive: false, isPublished: false })
+      .where(eq(cruises.id, id));
     return true;
   }
 
@@ -207,7 +292,7 @@ export class DatabaseStorage implements IStorage {
   async updateInventoryTotals(cruiseId: string, stepId: string, choiceId: string, quantityDelta: number): Promise<void> {
     await db
       .update(cruiseInventory)
-      .set({ 
+      .set({
         totalOrdered: sql`${cruiseInventory.totalOrdered} + ${quantityDelta}`,
         updatedAt: new Date()
       })
@@ -223,7 +308,7 @@ export class DatabaseStorage implements IStorage {
   async updateInventoryLimit(cruiseId: string, stepId: string, choiceId: string, limit: number | null): Promise<void> {
     await db
       .update(cruiseInventory)
-      .set({ 
+      .set({
         stockLimit: limit,
         updatedAt: new Date()
       })
@@ -303,6 +388,43 @@ export class DatabaseStorage implements IStorage {
       .orderBy(sql`${submissions.createdAt} DESC`);
   }
 
+  // Paginated submissions with search
+  async getSubmissionsByCruisePaginated(cruiseId: string, params: PaginationParams): Promise<PaginatedResult<Submission>> {
+    const page = params.page || 1;
+    const limit = Math.min(params.limit || 20, 100);
+    const offset = (page - 1) * limit;
+
+    const conditions = [eq(submissions.cruiseId, cruiseId)];
+    if (params.search) {
+      conditions.push(
+        or(
+          ilike(submissions.customerName, `%${params.search}%`),
+          ilike(submissions.customerPhone, `%${params.search}%`),
+        )!
+      );
+    }
+    const whereClause = and(...conditions);
+
+    const [{ count: total }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(submissions)
+      .where(whereClause);
+
+    const data = await db.select().from(submissions)
+      .where(whereClause)
+      .orderBy(desc(submissions.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
   async getSubmissionCountByCruise(cruiseId: string): Promise<number> {
     const result = await db.select({ count: sql<number>`count(*)` })
       .from(submissions)
@@ -326,6 +448,57 @@ export class DatabaseStorage implements IStorage {
 
   async createSubmission(submission: InsertSubmission): Promise<Submission> {
     const [created] = await db.insert(submissions).values(submission).returning();
+    return created;
+  }
+
+  // Audit logs
+  async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
+    const [created] = await db.insert(auditLogs).values(log).returning();
+    return created;
+  }
+
+  async getAuditLogs(params: PaginationParams): Promise<PaginatedResult<AuditLog>> {
+    const page = params.page || 1;
+    const limit = Math.min(params.limit || 50, 100);
+    const offset = (page - 1) * limit;
+
+    const [{ count: total }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(auditLogs);
+
+    const data = await db.select().from(auditLogs)
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  // Notification settings
+  async getNotificationSettings(userId: string): Promise<NotificationSettings | undefined> {
+    const [settings] = await db.select().from(notificationSettings)
+      .where(eq(notificationSettings.userId, userId));
+    return settings;
+  }
+
+  async upsertNotificationSettings(userId: string, settings: { emailOnSubmission?: boolean; emailAddress?: string | null }): Promise<NotificationSettings> {
+    const existing = await this.getNotificationSettings(userId);
+    if (existing) {
+      const [updated] = await db.update(notificationSettings)
+        .set({ ...settings, updatedAt: new Date() })
+        .where(eq(notificationSettings.userId, userId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(notificationSettings)
+      .values({ userId, ...settings })
+      .returning();
     return created;
   }
 }
