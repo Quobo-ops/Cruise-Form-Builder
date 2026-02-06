@@ -77,12 +77,14 @@ export const templates = pgTable("templates", {
   shareId: varchar("share_id").unique(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  deletedAt: timestamp("deleted_at"),
 });
 
 export const insertTemplateSchema = createInsertSchema(templates).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+  deletedAt: true,
 });
 
 export type InsertTemplate = z.infer<typeof insertTemplateSchema>;
@@ -104,12 +106,14 @@ export const cruises = pgTable("cruises", {
   learnMoreDescription: text("learn_more_description"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  deletedAt: timestamp("deleted_at"),
 });
 
 export const insertCruiseSchema = createInsertSchema(cruises).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+  deletedAt: true,
 });
 
 export type InsertCruise = z.infer<typeof insertCruiseSchema>;
@@ -165,3 +169,34 @@ export const insertCruiseInventorySchema = createInsertSchema(cruiseInventory).o
 
 export type InsertCruiseInventory = z.infer<typeof insertCruiseInventorySchema>;
 export type CruiseInventory = typeof cruiseInventory.$inferSelect;
+
+// Audit log table
+export const auditLogs = pgTable("audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id),
+  action: text("action").notNull(), // e.g. "template.create", "cruise.delete", "submission.export"
+  entityType: text("entity_type").notNull(), // e.g. "template", "cruise", "submission"
+  entityId: varchar("entity_id"),
+  details: jsonb("details").$type<Record<string, unknown>>(),
+  ipAddress: text("ip_address"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type AuditLog = typeof auditLogs.$inferSelect;
+
+// Notification preferences table
+export const notificationSettings = pgTable("notification_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  emailOnSubmission: boolean("email_on_submission").default(true),
+  emailAddress: text("email_address"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type NotificationSettings = typeof notificationSettings.$inferSelect;

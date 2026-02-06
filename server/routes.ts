@@ -1,6 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
+import pg from "pg";
+import compression from "compression";
 import { storage } from "./storage";
 import { randomBytes } from "crypto";
 import bcrypt from "bcrypt";
@@ -21,35 +24,70 @@ const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
-// Simple in-memory rate limiter for public form submissions
-const submissionRateLimit = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-const RATE_LIMIT_MAX = 10; // 10 submissions per minute per IP
+// Rate limiter supporting multiple keys (submission + login)
+class RateLimiter {
+  private entries = new Map<string, { count: number; resetAt: number }>();
 
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = submissionRateLimit.get(ip);
+  constructor(private windowMs: number, private maxRequests: number) {
+    // Clean up expired entries every 5 minutes
+    setInterval(() => {
+      const now = Date.now();
+      this.entries.forEach((entry, key) => {
+        if (now >= entry.resetAt) this.entries.delete(key);
+      });
+    }, 5 * 60 * 1000);
+  }
 
-  if (!entry || now >= entry.resetAt) {
-    submissionRateLimit.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+  check(key: string): boolean {
+    const now = Date.now();
+    const entry = this.entries.get(key);
+
+    if (!entry || now >= entry.resetAt) {
+      this.entries.set(key, { count: 1, resetAt: now + this.windowMs });
+      return true;
+    }
+
+    if (entry.count >= this.maxRequests) {
+      return false;
+    }
+
+    entry.count++;
     return true;
   }
-
-  if (entry.count >= RATE_LIMIT_MAX) {
-    return false;
-  }
-
-  entry.count++;
-  return true;
 }
 
-// Periodically clean up expired rate limit entries
-setInterval(() => {
-  const now = Date.now();
-  submissionRateLimit.forEach((entry, ip) => {
-    if (now >= entry.resetAt) submissionRateLimit.delete(ip);
-  });
-}, 5 * 60 * 1000);
+const submissionLimiter = new RateLimiter(60 * 1000, 10); // 10/min per IP
+const loginLimiter = new RateLimiter(15 * 60 * 1000, 10); // 10 per 15min per IP
+
+// Helper to log audit events (fire and forget, never blocks request)
+async function audit(
+  req: Request,
+  action: string,
+  entityType: string,
+  entityId?: string,
+  details?: Record<string, unknown>
+) {
+  try {
+    await storage.createAuditLog({
+      userId: req.session.userId || null,
+      action,
+      entityType,
+      entityId: entityId || null,
+      details: details || null,
+      ipAddress: req.ip || req.socket.remoteAddress || null,
+    });
+  } catch {
+    // Audit failure should never break the request
+  }
+}
+
+// CSV helper
+function escapeCsvField(value: string): string {
+  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
 
 // Validation schemas
 const loginSchema = z.object({
@@ -109,25 +147,48 @@ const submissionSchema = z.object({
   ),
 });
 
+const notificationSettingsSchema = z.object({
+  emailOnSubmission: z.boolean().optional(),
+  emailAddress: z.string().email().nullable().optional(),
+});
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Validate session secret
+  // Validate session secret — crash in production if missing
   const sessionSecret = process.env.SESSION_SECRET;
+  const isProduction = process.env.NODE_ENV === "production";
+
+  if (!sessionSecret && isProduction) {
+    console.error("FATAL: SESSION_SECRET must be set in production");
+    process.exit(1);
+  }
   if (!sessionSecret) {
     console.warn("Warning: SESSION_SECRET not set. Using fallback for development only.");
   }
 
   // Trust proxy for production (Replit sits behind a proxy)
-  const isProduction = process.env.NODE_ENV === "production";
   if (isProduction) {
     app.set("trust proxy", 1);
   }
 
-  // Session middleware
+  // Compression middleware
+  app.use(compression());
+
+  // Session middleware with PostgreSQL store
+  const PgSession = connectPgSimple(session);
+  const sessionPool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+
   app.use(
     session({
+      store: new PgSession({
+        pool: sessionPool,
+        tableName: "user_sessions",
+        createTableIfMissing: true,
+      }),
       secret: sessionSecret || "dev-only-secret-change-in-prod",
       resave: false,
       saveUninitialized: false,
@@ -143,9 +204,25 @@ export async function registerRoutes(
   // Object storage routes for file uploads
   registerObjectStorageRoutes(app);
 
+  // Health check endpoint
+  app.get("/api/health", async (_req, res) => {
+    try {
+      await sessionPool.query("SELECT 1");
+      res.json({ status: "ok", timestamp: new Date().toISOString() });
+    } catch {
+      res.status(503).json({ status: "unhealthy", timestamp: new Date().toISOString() });
+    }
+  });
+
   // Auth routes
   app.post("/api/auth/login", async (req, res) => {
     try {
+      // Rate limit login attempts
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!loginLimiter.check(`login:${clientIp}`)) {
+        return res.status(429).json({ error: "Too many login attempts. Please try again later." });
+      }
+
       const parseResult = loginSchema.safeParse(req.body);
       if (!parseResult.success) {
         return res.status(400).json({ error: parseResult.error.errors[0].message });
@@ -153,17 +230,19 @@ export async function registerRoutes(
 
       const { username, password } = parseResult.data;
       const user = await storage.getUserByUsername(username);
-      
+
       if (!user) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
       const isValidPassword = await bcrypt.compare(password, user.password);
       if (!isValidPassword) {
+        await audit(req, "auth.login_failed", "user", undefined, { username });
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
       req.session.userId = user.id;
+      await audit(req, "auth.login", "user", user.id);
       res.json({ id: user.id, username: user.username });
     } catch (error) {
       console.error("Login error:", error);
@@ -262,6 +341,7 @@ export async function registerRoutes(
         published: published || false,
         shareId: shareId || null,
       });
+      await audit(req, "template.create", "template", template.id, { name });
       res.status(201).json(template);
     } catch (error) {
       console.error("Create template error:", error);
@@ -287,6 +367,7 @@ export async function registerRoutes(
       if (!template) {
         return res.status(404).json({ error: "Template not found" });
       }
+      await audit(req, "template.update", "template", template.id);
       res.json(template);
     } catch (error) {
       console.error("Update template error:", error);
@@ -297,6 +378,7 @@ export async function registerRoutes(
   app.delete("/api/templates/:id", requireAuth, async (req, res) => {
     try {
       await storage.deleteTemplate(req.params.id);
+      await audit(req, "template.delete", "template", req.params.id);
       res.json({ success: true });
     } catch (error: any) {
       if (error.message?.includes("Cannot delete template")) {
@@ -320,6 +402,7 @@ export async function registerRoutes(
         published: false,
         shareId: null,
       });
+      await audit(req, "template.duplicate", "template", duplicate.id, { sourceId: req.params.id });
       res.status(201).json(duplicate);
     } catch (error) {
       console.error("Duplicate template error:", error);
@@ -335,12 +418,13 @@ export async function registerRoutes(
       }
 
       const shareId = template.shareId || randomBytes(8).toString("hex");
-      
+
       const updated = await storage.updateTemplate(req.params.id, {
         published: true,
         shareId,
       });
 
+      await audit(req, "template.publish", "template", req.params.id);
       res.json({ shareId, template: updated });
     } catch (error) {
       console.error("Publish template error:", error);
@@ -348,23 +432,15 @@ export async function registerRoutes(
     }
   });
 
-  // Cruise routes (protected)
+  // Cruise routes (protected) — now with pagination and N+1 fix
   app.get("/api/cruises", requireAuth, async (req, res) => {
     try {
-      const cruiseList = await storage.getCruises();
-      // Add submission counts for each cruise
-      const cruisesWithCounts = await Promise.all(
-        cruiseList.map(async (cruise) => {
-          const submissionCount = await storage.getSubmissionCountByCruise(cruise.id);
-          const unviewedCount = await storage.getUnviewedSubmissionCount(cruise.id);
-          return {
-            ...cruise,
-            submissionCount,
-            unviewedCount,
-          };
-        })
-      );
-      res.json(cruisesWithCounts);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const search = (req.query.search as string) || undefined;
+
+      const result = await storage.getCruisesPaginated({ page, limit, search });
+      res.json(result);
     } catch (error) {
       console.error("Get cruises error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -448,6 +524,7 @@ export async function registerRoutes(
         }
       }
 
+      await audit(req, "cruise.create", "cruise", cruise.id, { name });
       res.status(201).json(cruise);
     } catch (error) {
       console.error("Create cruise error:", error);
@@ -463,7 +540,7 @@ export async function registerRoutes(
       }
 
       const { name, description, startDate, endDate, templateId, isActive, isPublished, learnMoreHeader, learnMoreImages, learnMoreDescription } = parseResult.data;
-      
+
       const cruise = await storage.updateCruise(req.params.id, {
         ...(name !== undefined && { name }),
         ...(description !== undefined && { description }),
@@ -480,6 +557,7 @@ export async function registerRoutes(
       if (!cruise) {
         return res.status(404).json({ error: "Cruise not found" });
       }
+      await audit(req, "cruise.update", "cruise", cruise.id);
       res.json(cruise);
     } catch (error) {
       console.error("Update cruise error:", error);
@@ -490,6 +568,7 @@ export async function registerRoutes(
   app.delete("/api/cruises/:id", requireAuth, async (req, res) => {
     try {
       await storage.deleteCruise(req.params.id);
+      await audit(req, "cruise.delete", "cruise", req.params.id);
       res.json({ success: true });
     } catch (error) {
       console.error("Delete cruise error:", error);
@@ -528,6 +607,7 @@ export async function registerRoutes(
       }
 
       await storage.updateInventoryLimit(req.params.id, stepId, choiceId, limit);
+      await audit(req, "inventory.update_limit", "cruise_inventory", req.params.id, { stepId, choiceId, limit });
       res.json({ success: true });
     } catch (error) {
       console.error("Update inventory limit error:", error);
@@ -535,15 +615,106 @@ export async function registerRoutes(
     }
   });
 
-  // Cruise submissions routes
+  // Cruise submissions routes — now with pagination and search
   app.get("/api/cruises/:id/submissions", requireAuth, async (req, res) => {
     try {
-      const submissions = await storage.getSubmissionsByCruise(req.params.id);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const search = (req.query.search as string) || undefined;
+
+      const result = await storage.getSubmissionsByCruisePaginated(req.params.id, { page, limit, search });
       // Mark as viewed
       await storage.markSubmissionsViewed(req.params.id);
-      res.json(submissions);
+      res.json(result);
     } catch (error) {
       console.error("Get cruise submissions error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // CSV export for cruise submissions
+  app.get("/api/cruises/:id/submissions/export", requireAuth, async (req, res) => {
+    try {
+      const cruise = await storage.getCruise(req.params.id);
+      if (!cruise) {
+        return res.status(404).json({ error: "Cruise not found" });
+      }
+
+      const template = await storage.getTemplate(cruise.templateId);
+      const allSubmissions = await storage.getSubmissionsByCruise(req.params.id);
+
+      if (allSubmissions.length === 0) {
+        return res.status(404).json({ error: "No submissions to export" });
+      }
+
+      // Collect all unique step IDs from submissions to build columns
+      const stepIds = new Set<string>();
+      for (const sub of allSubmissions) {
+        if (sub.answers && typeof sub.answers === "object") {
+          for (const key of Object.keys(sub.answers)) {
+            stepIds.add(key);
+          }
+        }
+      }
+
+      // Build step label map from template graph
+      const stepLabels: Record<string, string> = {};
+      if (template?.graph?.steps) {
+        for (const [id, step] of Object.entries(template.graph.steps)) {
+          stepLabels[id] = step.question || id;
+        }
+      }
+
+      // Build CSV header
+      const orderedStepIds = Array.from(stepIds);
+      const headers = [
+        "Submission ID",
+        "Customer Name",
+        "Customer Phone",
+        "Submitted At",
+        ...orderedStepIds.map(id => stepLabels[id] || id),
+      ];
+
+      const rows: string[] = [headers.map(escapeCsvField).join(",")];
+
+      for (const sub of allSubmissions) {
+        const row: string[] = [
+          sub.id,
+          sub.customerName || "",
+          sub.customerPhone || "",
+          sub.createdAt ? new Date(sub.createdAt).toISOString() : "",
+        ];
+
+        for (const stepId of orderedStepIds) {
+          const answer = sub.answers?.[stepId];
+          if (answer === undefined || answer === null) {
+            row.push("");
+          } else if (typeof answer === "string") {
+            row.push(answer);
+          } else if (Array.isArray(answer)) {
+            // Quantity answers: "2x Kayak Tour ($50); 1x Snorkel ($25)"
+            const parts = answer
+              .filter((a: any) => a.quantity > 0)
+              .map((a: any) => `${a.quantity}x ${a.label} ($${a.price})`);
+            row.push(parts.join("; "));
+          } else {
+            row.push(String(answer));
+          }
+        }
+
+        rows.push(row.map(escapeCsvField).join(","));
+      }
+
+      const csvContent = rows.join("\n");
+      const filename = `${cruise.name.replace(/[^a-zA-Z0-9]/g, "_")}_submissions_${new Date().toISOString().split("T")[0]}.csv`;
+
+      await audit(req, "submission.export", "cruise", req.params.id, { count: allSubmissions.length, format: "csv" });
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.send(csvContent);
+    } catch (error) {
+      console.error("Export submissions error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -562,8 +733,8 @@ export async function registerRoutes(
         if (template) {
           // Get inventory for stock limit enforcement
           const inventory = await storage.getCruiseInventory(cruise.id);
-          return res.json({ 
-            ...template, 
+          return res.json({
+            ...template,
             cruise,
             inventory: inventory.map(item => ({
               stepId: item.stepId,
@@ -591,7 +762,7 @@ export async function registerRoutes(
     try {
       // Rate limit check
       const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkRateLimit(clientIp)) {
+      if (!submissionLimiter.check(`submit:${clientIp}`)) {
         return res.status(429).json({ error: "Too many submissions. Please try again later." });
       }
 
@@ -651,6 +822,15 @@ export async function registerRoutes(
         isViewed: false,
       });
 
+      // Log submission event for notification system
+      await audit(
+        req,
+        "submission.create",
+        "submission",
+        submission.id,
+        { cruiseId, customerName: customerName || null, customerPhone }
+      );
+
       res.status(201).json(submission);
     } catch (error) {
       console.error("Submit form error:", error);
@@ -666,6 +846,49 @@ export async function registerRoutes(
       res.json(submissions);
     } catch (error) {
       console.error("Get submissions error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Audit log routes (protected)
+  app.get("/api/audit-logs", requireAuth, async (req, res) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+
+      const result = await storage.getAuditLogs({ page, limit });
+      res.json(result);
+    } catch (error) {
+      console.error("Get audit logs error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Notification settings routes (protected)
+  app.get("/api/notification-settings", requireAuth, async (req, res) => {
+    try {
+      const settings = await storage.getNotificationSettings(req.session.userId!);
+      res.json(settings || { emailOnSubmission: true, emailAddress: null });
+    } catch (error) {
+      console.error("Get notification settings error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.put("/api/notification-settings", requireAuth, async (req, res) => {
+    try {
+      const parseResult = notificationSettingsSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: parseResult.error.errors[0].message });
+      }
+
+      const settings = await storage.upsertNotificationSettings(
+        req.session.userId!,
+        parseResult.data
+      );
+      res.json(settings);
+    } catch (error) {
+      console.error("Update notification settings error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
