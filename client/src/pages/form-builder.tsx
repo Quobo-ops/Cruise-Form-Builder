@@ -44,6 +44,8 @@ export default function FormBuilder() {
   const pendingChangesRef = useRef(false);
   const isSavingRef = useRef(false);
   const lastSavedDataRef = useRef<{ name: string; graph: FormGraph | null }>({ name: "", graph: null });
+  const graphRef = useRef<FormGraph | null>(null);
+  const templateNameRef = useRef("");
 
   const { data: template, isLoading } = useQuery<Template>({
     queryKey: ["/api/templates", id],
@@ -66,6 +68,9 @@ export default function FormBuilder() {
       isInitialized.current = true;
     }
   }, [template]);
+
+  useEffect(() => { graphRef.current = graph; }, [graph]);
+  useEffect(() => { templateNameRef.current = templateName; }, [templateName]);
 
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < graphHistory.length - 1;
@@ -114,6 +119,11 @@ export default function FormBuilder() {
       pendingChangesRef.current = false;
       isSavingRef.current = false;
       setAutoSaveStatus("saved");
+      // Keep React Query cache in sync so remount gets latest saved data
+      queryClient.setQueryData(["/api/templates", id], (old: Template | undefined) => {
+        if (!old) return old;
+        return { ...old, name: variables.name, graph: variables.graph };
+      });
     },
     onError: () => {
       isSavingRef.current = false;
@@ -215,6 +225,43 @@ export default function FormBuilder() {
       }
     };
   }, [graph, templateName, saveMutation]);
+
+  // Save pending changes on component unmount (handles in-app SPA navigation)
+  useEffect(() => {
+    return () => {
+      if (!isInitialized.current) return;
+
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+
+      const currentGraph = graphRef.current;
+      const currentName = templateNameRef.current;
+
+      if (!currentGraph || !currentName) return;
+
+      // Check if there are unsaved changes compared to last completed save
+      const currentData = JSON.stringify({ name: currentName, graph: currentGraph });
+      const savedData = JSON.stringify(lastSavedDataRef.current);
+
+      if (currentData !== savedData) {
+        // Use keepalive fetch to ensure the request completes after unmount
+        fetch(`/api/templates/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: currentName, graph: currentGraph }),
+          keepalive: true,
+          credentials: "include",
+        });
+      }
+
+      // Update React Query cache with latest state so remount gets current data
+      queryClient.setQueryData(["/api/templates", id], (old: Template | undefined) => {
+        if (!old) return old;
+        return { ...old, name: currentName, graph: currentGraph };
+      });
+    };
+  }, [id]);
 
   const publishMutation = useMutation({
     mutationFn: async () => {
