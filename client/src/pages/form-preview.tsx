@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -26,6 +26,20 @@ export default function FormPreview() {
   const [history, setHistory] = useState<string[]>([]);
   const [isReview, setIsReview] = useState(false);
   const [showInfoPopup, setShowInfoPopup] = useState(false);
+
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const liveRegionRef = useRef<HTMLDivElement>(null);
+
+  const announce = useCallback((message: string) => {
+    if (liveRegionRef.current) {
+      liveRegionRef.current.textContent = "";
+      requestAnimationFrame(() => {
+        if (liveRegionRef.current) {
+          liveRegionRef.current.textContent = message;
+        }
+      });
+    }
+  }, []);
 
   const { data: template, isLoading } = useQuery<Template>({
     queryKey: ["/api/templates", id],
@@ -109,6 +123,25 @@ export default function FormPreview() {
 
   const canNavigatePrev = currentStepIndex > 0;
   const canNavigateNext = currentStepIndex < orderedSteps.length - 1;
+
+  // Focus management on step transitions
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (stepHeadingRef.current) {
+        stepHeadingRef.current.focus();
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [currentStepId, isReview]);
+
+  // Screen reader step announcements
+  useEffect(() => {
+    if (isReview) {
+      announce("Review your answers.");
+    } else if (currentStep) {
+      announce(`Step ${currentStepIndex + 1} of ${orderedSteps.length}: ${currentStep.question}`);
+    }
+  }, [currentStepId, isReview, currentStep, currentStepIndex, orderedSteps.length, announce]);
 
   if (authLoading) {
     return (
@@ -285,7 +318,7 @@ export default function FormPreview() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-md" aria-busy="true">
           <CardHeader>
             <Skeleton className="h-6 w-3/4" />
           </CardHeader>
@@ -293,16 +326,18 @@ export default function FormPreview() {
             <Skeleton className="h-32 w-full" />
           </CardContent>
         </Card>
+        <span className="sr-only">Loading form preview...</span>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-primary/5">
+      <div ref={liveRegionRef} className="sr-only" aria-live="polite" aria-atomic="true" role="status" />
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <Link href={`/admin/builder/${id}`} className="flex items-center gap-2 text-muted-foreground hover-elevate rounded-md px-2 py-1">
-            <ArrowLeft className="w-4 h-4" />
+          <Link href={`/admin/builder/${id}`} className="flex items-center gap-2 text-muted-foreground hover-elevate rounded-md px-2 py-1" aria-label="Back to form editor">
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
             <span className="hidden sm:inline">Back to Editor</span>
           </Link>
           <div className="flex items-center gap-2">
@@ -336,11 +371,12 @@ export default function FormPreview() {
               size="icon"
               onClick={() => handlePreviewNavigate('prev')}
               disabled={!canNavigatePrev}
+              aria-label="Previous step"
               data-testid="button-preview-prev"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-5 h-5" aria-hidden="true" />
             </Button>
-            <span className="text-sm text-muted-foreground">
+            <span className="text-sm text-muted-foreground" aria-current="step">
               Step {currentStepIndex + 1} of {orderedSteps.length}
             </span>
             <Button
@@ -348,16 +384,17 @@ export default function FormPreview() {
               size="icon"
               onClick={() => handlePreviewNavigate('next')}
               disabled={!canNavigateNext}
+              aria-label="Next step"
               data-testid="button-preview-next"
             >
-              <ArrowRight className="w-5 h-5" />
+              <ArrowRight className="w-5 h-5" aria-hidden="true" />
             </Button>
           </div>
 
           {isReview ? (
             <Card>
               <CardHeader>
-                <CardTitle>Review Your Answers</CardTitle>
+                <CardTitle ref={stepHeadingRef} tabIndex={-1} className="outline-none">Review Your Answers</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {history.map((stepId) => {
@@ -368,7 +405,16 @@ export default function FormPreview() {
                     <div
                       key={stepId}
                       className="p-4 bg-muted rounded-md cursor-pointer hover-elevate"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Edit answer for: ${step.question}`}
                       onClick={() => handleEditAnswer(stepId)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleEditAnswer(stepId);
+                        }
+                      }}
                     >
                       <p className="text-sm text-muted-foreground mb-1">{step.question}</p>
                       {Array.isArray(answer) ? (
@@ -395,11 +441,11 @@ export default function FormPreview() {
                 )}
 
                 <div className="flex gap-3 pt-4">
-                  <Button variant="outline" onClick={handleBack} className="gap-2">
-                    <ChevronLeft className="w-4 h-4" />
+                  <Button variant="outline" onClick={handleBack} className="gap-2" aria-label="Go back to previous step">
+                    <ChevronLeft className="w-4 h-4" aria-hidden="true" />
                     Back
                   </Button>
-                  <Button className="flex-1" onClick={handleSubmit} data-testid="button-submit-preview">
+                  <Button className="flex-1" onClick={handleSubmit} data-testid="button-submit-preview" aria-label="Submit booking (preview mode)">
                     Submit Booking
                   </Button>
                 </div>
@@ -417,10 +463,10 @@ export default function FormPreview() {
                       size="icon"
                       onClick={() => setShowInfoPopup(true)}
                       className="rounded-full shadow-lg animate-pulse"
-                      title="More information"
+                      aria-label="More information about this question"
                       data-testid="button-step-info"
                     >
-                      <Info className="w-5 h-5" />
+                      <Info className="w-5 h-5" aria-hidden="true" />
                     </Button>
                   </div>
                   <StepInfoPopup
@@ -432,7 +478,7 @@ export default function FormPreview() {
               )}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">{currentStep.question}</CardTitle>
+                  <CardTitle ref={stepHeadingRef} tabIndex={-1} className="text-lg outline-none">{currentStep.question}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                 {currentStep.type === "text" ? (
@@ -443,12 +489,13 @@ export default function FormPreview() {
                       placeholder={currentStep.placeholder || "Enter your answer"}
                       onKeyDown={(e) => e.key === "Enter" && handleTextSubmit()}
                       autoFocus
+                      aria-label={currentStep.question}
                       data-testid="input-form-answer"
                     />
                     <div className="flex gap-3">
                       {history.length > 0 && (
-                        <Button variant="outline" onClick={handleBack} className="gap-2">
-                          <ChevronLeft className="w-4 h-4" />
+                        <Button variant="outline" onClick={handleBack} className="gap-2" aria-label="Go back to previous step">
+                          <ChevronLeft className="w-4 h-4" aria-hidden="true" />
                           Back
                         </Button>
                       )}
@@ -456,22 +503,24 @@ export default function FormPreview() {
                         className="flex-1 gap-2"
                         onClick={handleTextSubmit}
                         disabled={!inputValue.trim()}
+                        aria-label="Next step"
                         data-testid="button-next"
                       >
                         Next
-                        <ArrowRight className="w-4 h-4" />
+                        <ArrowRight className="w-4 h-4" aria-hidden="true" />
                       </Button>
                     </div>
                   </>
                 ) : currentStep.type === "choice" ? (
                   <>
-                    <div className="space-y-2">
+                    <div className="space-y-2" role="group" aria-label="Select an option">
                       {currentStep.choices?.map((choice) => (
                         <Button
                           key={choice.id}
                           variant="outline"
                           className="w-full justify-start h-auto py-3 px-4 text-left"
                           onClick={() => handleChoiceSelect(choice)}
+                          aria-label={`Select: ${choice.label}`}
                           data-testid={`button-choice-${choice.id}`}
                         >
                           {choice.label}
@@ -479,15 +528,15 @@ export default function FormPreview() {
                       ))}
                     </div>
                     {history.length > 0 && (
-                      <Button variant="ghost" onClick={handleBack} className="w-full gap-2">
-                        <ChevronLeft className="w-4 h-4" />
+                      <Button variant="ghost" onClick={handleBack} className="w-full gap-2" aria-label="Go back to previous step">
+                        <ChevronLeft className="w-4 h-4" aria-hidden="true" />
                         Back
                       </Button>
                     )}
                   </>
                 ) : currentStep.type === "quantity" ? (
                   <>
-                    <div className="space-y-3">
+                    <div className="space-y-3" role="group" aria-label="Select quantities">
                       {currentStep.quantityChoices?.map((choice) => {
                         const currentQty = quantitySelections[choice.id] || 0;
 
@@ -498,6 +547,7 @@ export default function FormPreview() {
                               variant="outline"
                               className="w-full justify-center h-auto py-3 px-4"
                               onClick={handleQuantitySubmit}
+                              aria-label={choice.label}
                               data-testid={`button-no-thanks-${choice.id}`}
                             >
                               {choice.label}
@@ -506,17 +556,17 @@ export default function FormPreview() {
                         }
 
                         return (
-                          <div key={choice.id} className="p-4 border rounded-md">
+                          <div key={choice.id} className="p-4 border rounded-md" role="group" aria-label={`${choice.label}, $${(choice.price || 0).toFixed(2)} each`}>
                             <div className="flex items-center justify-between gap-2 mb-2">
                               <div className="flex-1">
                                 <p className="font-medium">{choice.label}</p>
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <DollarSign className="w-3 h-3" />
+                                  <DollarSign className="w-3 h-3" aria-hidden="true" />
                                   ${(choice.price || 0).toFixed(2)} each
                                 </div>
                               </div>
                               {choice.limit && (
-                                <Badge variant="outline">{choice.limit} max</Badge>
+                                <Badge variant="outline" aria-label={`Maximum ${choice.limit}`}>{choice.limit} max</Badge>
                               )}
                             </div>
                             <div className="flex items-center justify-center gap-4">
@@ -525,11 +575,12 @@ export default function FormPreview() {
                                 size="icon"
                                 onClick={() => handleQuantityChange(choice.id, -1)}
                                 disabled={currentQty === 0}
+                                aria-label={`Decrease quantity for ${choice.label}`}
                                 data-testid={`button-minus-${choice.id}`}
                               >
-                                <Minus className="w-4 h-4" />
+                                <Minus className="w-4 h-4" aria-hidden="true" />
                               </Button>
-                              <span className="text-2xl font-bold w-12 text-center">
+                              <span className="text-2xl font-bold w-12 text-center" aria-live="polite" aria-label={`${currentQty} selected for ${choice.label}`}>
                                 {currentQty}
                               </span>
                               <Button
@@ -537,9 +588,10 @@ export default function FormPreview() {
                                 size="icon"
                                 onClick={() => handleQuantityChange(choice.id, 1)}
                                 disabled={choice.limit ? currentQty >= choice.limit : false}
+                                aria-label={`Increase quantity for ${choice.label}`}
                                 data-testid={`button-plus-${choice.id}`}
                               >
-                                <Plus className="w-4 h-4" />
+                                <Plus className="w-4 h-4" aria-hidden="true" />
                               </Button>
                             </div>
                           </div>
@@ -548,18 +600,19 @@ export default function FormPreview() {
                     </div>
                     <div className="flex gap-3">
                       {history.length > 0 && (
-                        <Button variant="outline" onClick={handleBack} className="gap-2">
-                          <ChevronLeft className="w-4 h-4" />
+                        <Button variant="outline" onClick={handleBack} className="gap-2" aria-label="Go back to previous step">
+                          <ChevronLeft className="w-4 h-4" aria-hidden="true" />
                           Back
                         </Button>
                       )}
                       <Button
                         className="flex-1 gap-2"
                         onClick={handleQuantitySubmit}
+                        aria-label="Continue to next step"
                         data-testid="button-quantity-next"
                       >
                         Next
-                        <ArrowRight className="w-4 h-4" />
+                        <ArrowRight className="w-4 h-4" aria-hidden="true" />
                       </Button>
                     </div>
                   </>
