@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -68,6 +68,13 @@ export default function CruiseDetail() {
   const [learnMoreDescription, setLearnMoreDescription] = useState("");
   const [previewImageIndex, setPreviewImageIndex] = useState(0);
   
+  // Refs for saving learn-more content on unmount
+  const learnMoreHeaderRef = useRef("");
+  const learnMoreImagesRef = useRef<string[]>([]);
+  const learnMoreDescriptionRef = useRef("");
+  const hasUnsavedLearnMoreRef = useRef(false);
+  const cruiseDataRef = useRef<CruiseWithCounts | undefined>(undefined);
+
   const { uploadFile, isUploading } = useUpload({
     onSuccess: (response) => {
       setLearnMoreImages(prev => [...prev, response.objectPath]);
@@ -182,6 +189,50 @@ export default function CruiseDetail() {
       initLearnMoreFromCruise();
     }
   }, [cruise?.learnMoreHeader, cruise?.learnMoreImages, cruise?.learnMoreDescription]);
+
+  // Keep refs in sync for unmount save
+  useEffect(() => { learnMoreHeaderRef.current = learnMoreHeader; }, [learnMoreHeader]);
+  useEffect(() => { learnMoreImagesRef.current = learnMoreImages; }, [learnMoreImages]);
+  useEffect(() => { learnMoreDescriptionRef.current = learnMoreDescription; }, [learnMoreDescription]);
+  useEffect(() => { cruiseDataRef.current = cruise; }, [cruise]);
+
+  // Track unsaved learn-more changes
+  useEffect(() => {
+    if (!cruise) return;
+    const hasChanges =
+      learnMoreHeader !== (cruise.learnMoreHeader || "") ||
+      JSON.stringify(learnMoreImages) !== JSON.stringify(cruise.learnMoreImages || []) ||
+      learnMoreDescription !== (cruise.learnMoreDescription || "");
+    hasUnsavedLearnMoreRef.current = hasChanges;
+  }, [learnMoreHeader, learnMoreImages, learnMoreDescription, cruise]);
+
+  // Save unsaved learn-more content on component unmount (SPA navigation)
+  useEffect(() => {
+    return () => {
+      if (hasUnsavedLearnMoreRef.current && id) {
+        fetch(`/api/cruises/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            learnMoreHeader: learnMoreHeaderRef.current || null,
+            learnMoreImages: learnMoreImagesRef.current.length > 0 ? learnMoreImagesRef.current : null,
+            learnMoreDescription: learnMoreDescriptionRef.current || null,
+          }),
+          credentials: "include",
+          keepalive: true,
+        });
+        // Update query cache so navigating back shows latest data
+        queryClient.setQueryData(["/api/cruises", id], (old: CruiseWithCounts | undefined) =>
+          old ? {
+            ...old,
+            learnMoreHeader: learnMoreHeaderRef.current || null,
+            learnMoreImages: learnMoreImagesRef.current.length > 0 ? learnMoreImagesRef.current : null,
+            learnMoreDescription: learnMoreDescriptionRef.current || null,
+          } : old
+        );
+      }
+    };
+  }, [id]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

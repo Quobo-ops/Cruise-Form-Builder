@@ -1014,10 +1014,11 @@ export function DecisionTreeEditor({
                   { id: `qc-${Date.now()}-3`, label: "No thanks", price: 0, limit: null, isNoThanks: true },
                 ]
               : undefined,
-            nextStepId: type === "text" || type === "quantity" ? null : undefined,
+            nextStepId: null,
           };
 
       const parentStep = graph.steps[parentStepId];
+      if (!parentStep) return;
       const newSteps = { ...graph.steps, [newId]: newStep };
 
       if (choiceId && parentStep.type === "choice" && parentStep.choices) {
@@ -1109,7 +1110,7 @@ export function DecisionTreeEditor({
             { id: `qc-${Date.now()}-3`, label: "No thanks", price: 0, limit: null, isNoThanks: true },
           ]
         : undefined,
-      nextStepId: type === "text" || type === "quantity" ? null : undefined,
+      nextStepId: null,
     };
     onGraphChange({
       rootStepId: newId,
