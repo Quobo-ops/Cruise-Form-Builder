@@ -41,6 +41,12 @@ export interface IStorage {
   updateInventoryTotals(cruiseId: string, stepId: string, choiceId: string, quantityDelta: number): Promise<void>;
   updateInventoryLimit(cruiseId: string, stepId: string, choiceId: string, limit: number | null): Promise<void>;
 
+  // Transactional inventory
+  checkAndUpdateInventory(
+    cruiseId: string,
+    items: Array<{ stepId: string; choiceId: string; quantity: number; label: string }>
+  ): Promise<{ success: boolean; error?: string }>;
+
   // Submissions
   getSubmissions(templateId?: string): Promise<Submission[]>;
   getSubmissionsByCruise(cruiseId: string): Promise<Submission[]>;
@@ -115,6 +121,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteTemplate(id: string): Promise<boolean> {
+    // Check if any cruises reference this template
+    const linkedCruises = await db.select({ id: cruises.id }).from(cruises).where(eq(cruises.templateId, id));
+    if (linkedCruises.length > 0) {
+      throw new Error(`Cannot delete template: ${linkedCruises.length} cruise(s) are using it. Delete the cruises first.`);
+    }
     await db.delete(templates).where(eq(templates.id, id));
     return true;
   }
@@ -155,12 +166,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteCruise(id: string): Promise<boolean> {
-    // Delete inventory first
-    await db.delete(cruiseInventory).where(eq(cruiseInventory.cruiseId, id));
-    // Delete submissions linked to this cruise
-    await db.delete(submissions).where(eq(submissions.cruiseId, id));
-    // Delete the cruise
-    await db.delete(cruises).where(eq(cruises.id, id));
+    await db.transaction(async (tx) => {
+      await tx.delete(cruiseInventory).where(eq(cruiseInventory.cruiseId, id));
+      await tx.delete(submissions).where(eq(submissions.cruiseId, id));
+      await tx.delete(cruises).where(eq(cruises.id, id));
+    });
     return true;
   }
 
@@ -224,6 +234,59 @@ export class DatabaseStorage implements IStorage {
           eq(cruiseInventory.choiceId, choiceId)
         )
       );
+  }
+
+  // Transactional inventory check + update (prevents race conditions)
+  async checkAndUpdateInventory(
+    cruiseId: string,
+    items: Array<{ stepId: string; choiceId: string; quantity: number; label: string }>
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      await db.transaction(async (tx) => {
+        for (const item of items) {
+          if (item.quantity <= 0) continue;
+
+          // Atomic check-and-update: only updates if stock is available
+          const result = await tx
+            .update(cruiseInventory)
+            .set({
+              totalOrdered: sql`${cruiseInventory.totalOrdered} + ${item.quantity}`,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(cruiseInventory.cruiseId, cruiseId),
+                eq(cruiseInventory.stepId, item.stepId),
+                eq(cruiseInventory.choiceId, item.choiceId),
+                sql`(${cruiseInventory.stockLimit} IS NULL OR ${cruiseInventory.stockLimit} - ${cruiseInventory.totalOrdered} >= ${item.quantity})`
+              )
+            )
+            .returning({ id: cruiseInventory.id });
+
+          if (result.length === 0) {
+            // Check if the item exists to determine the actual error
+            const [existing] = await tx
+              .select()
+              .from(cruiseInventory)
+              .where(
+                and(
+                  eq(cruiseInventory.cruiseId, cruiseId),
+                  eq(cruiseInventory.stepId, item.stepId),
+                  eq(cruiseInventory.choiceId, item.choiceId)
+                )
+              );
+
+            if (existing?.stockLimit !== null && existing?.stockLimit !== undefined) {
+              const remaining = Math.max(0, existing.stockLimit - existing.totalOrdered);
+              throw new Error(`Not enough stock for ${item.label}. Only ${remaining} remaining.`);
+            }
+          }
+        }
+      });
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
   }
 
   // Submissions

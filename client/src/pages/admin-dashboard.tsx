@@ -394,14 +394,24 @@ export default function AdminDashboard() {
                       Cancel
                     </Button>
                     <Button
-                      onClick={() => createCruiseMutation.mutate({
-                        name: newCruiseName,
-                        description: newCruiseDescription,
-                        templateId: newCruiseTemplateId,
-                        startDate: newCruiseStartDate || undefined,
-                        endDate: newCruiseEndDate || undefined,
-                        isPublished: newCruisePublished,
-                      })}
+                      onClick={() => {
+                        if (newCruiseStartDate && newCruiseEndDate && new Date(newCruiseEndDate) <= new Date(newCruiseStartDate)) {
+                          toast({
+                            title: "Invalid dates",
+                            description: "End date must be after start date.",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+                        createCruiseMutation.mutate({
+                          name: newCruiseName,
+                          description: newCruiseDescription,
+                          templateId: newCruiseTemplateId,
+                          startDate: newCruiseStartDate || undefined,
+                          endDate: newCruiseEndDate || undefined,
+                          isPublished: newCruisePublished,
+                        });
+                      }}
                       disabled={!newCruiseName.trim() || !newCruiseTemplateId || createCruiseMutation.isPending}
                       data-testid="button-create-cruise-confirm"
                     >
@@ -698,6 +708,17 @@ export default function AdminDashboard() {
             <DialogTitle>Delete Template</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete this template? This action cannot be undone.
+              {(() => {
+                const t = templates?.find(t => t.id === deleteTemplateId);
+                if (t && t.cruiseCount > 0) {
+                  return (
+                    <span className="block mt-2 font-medium text-destructive">
+                      Warning: {t.cruiseCount} cruise(s) are using this template. You must delete them first.
+                    </span>
+                  );
+                }
+                return null;
+              })()}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

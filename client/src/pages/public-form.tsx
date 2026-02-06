@@ -110,8 +110,15 @@ export default function PublicForm() {
   const handleTextSubmit = () => {
     if (!currentStep || !inputValue.trim()) return;
     
-    // Store name from first step if it looks like a name question
-    if (currentStep.question.toLowerCase().includes("name") && !customerName) {
+    // Store name if the question is asking for the user's name
+    const q = currentStep.question.toLowerCase();
+    if (!customerName && (
+      q.includes("your name") ||
+      q.includes("full name") ||
+      q.includes("first name") ||
+      q.includes("last name") ||
+      (q.includes("name") && (q.includes("what") || q.includes("enter")))
+    )) {
       setCustomerName(inputValue);
     }
     
@@ -191,10 +198,21 @@ export default function PublicForm() {
   };
 
   const handlePhoneSubmit = () => {
-    if (!customerPhone.trim()) {
+    const phone = customerPhone.trim();
+    if (!phone) {
       toast({
         title: "Phone number required",
         description: "Please enter your phone number to continue.",
+        variant: "destructive",
+      });
+      return;
+    }
+    // Validate phone has at least 7 digits
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 7) {
+      toast({
+        title: "Invalid phone number",
+        description: "Please enter a valid phone number with at least 7 digits.",
         variant: "destructive",
       });
       return;
@@ -761,7 +779,6 @@ export default function PublicForm() {
                             });
                             return;
                           }
-                          console.log("Form submission:", { answers, customerName, customerPhone });
                           submitMutation.mutate();
                         }}
                         disabled={submitMutation.isPending}

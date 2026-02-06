@@ -21,6 +21,36 @@ const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
+// Simple in-memory rate limiter for public form submissions
+const submissionRateLimit = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX = 10; // 10 submissions per minute per IP
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = submissionRateLimit.get(ip);
+
+  if (!entry || now >= entry.resetAt) {
+    submissionRateLimit.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX) {
+    return false;
+  }
+
+  entry.count++;
+  return true;
+}
+
+// Periodically clean up expired rate limit entries
+setInterval(() => {
+  const now = Date.now();
+  submissionRateLimit.forEach((entry, ip) => {
+    if (now >= entry.resetAt) submissionRateLimit.delete(ip);
+  });
+}, 5 * 60 * 1000);
+
 // Validation schemas
 const loginSchema = z.object({
   username: z.string().min(1, "Username required"),
@@ -73,7 +103,10 @@ const inventoryLimitUpdateSchema = z.object({
 const submissionSchema = z.object({
   answers: z.record(z.string(), z.union([z.string(), z.array(quantityAnswerSchema)])),
   customerName: z.string().optional(),
-  customerPhone: z.string().min(1, "Phone number is required"),
+  customerPhone: z.string().min(1, "Phone number is required").refine(
+    (val) => val.replace(/\D/g, "").length >= 7,
+    "Phone number must have at least 7 digits"
+  ),
 });
 
 export async function registerRoutes(
@@ -265,7 +298,10 @@ export async function registerRoutes(
     try {
       await storage.deleteTemplate(req.params.id);
       res.json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
+      if (error.message?.includes("Cannot delete template")) {
+        return res.status(400).json({ error: error.message });
+      }
       console.error("Delete template error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
@@ -358,7 +394,19 @@ export async function registerRoutes(
       }
 
       const { name, description, startDate, endDate, templateId, isActive, isPublished } = parseResult.data;
-      
+
+      // Validate date range
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+          return res.status(400).json({ error: "Invalid date format" });
+        }
+        if (end <= start) {
+          return res.status(400).json({ error: "End date must be after start date" });
+        }
+      }
+
       // Verify template exists
       const template = await storage.getTemplate(templateId);
       if (!template) {
@@ -468,6 +516,17 @@ export async function registerRoutes(
       }
 
       const { stepId, choiceId, limit } = parseResult.data;
+
+      // Validate that new limit is not below current orders
+      if (limit !== null) {
+        const item = await storage.getInventoryItem(req.params.id, stepId, choiceId);
+        if (item && limit < item.totalOrdered) {
+          return res.status(400).json({
+            error: `Cannot set limit to ${limit}. Already ${item.totalOrdered} ordered.`
+          });
+        }
+      }
+
       await storage.updateInventoryLimit(req.params.id, stepId, choiceId, limit);
       res.json({ success: true });
     } catch (error) {
@@ -530,6 +589,12 @@ export async function registerRoutes(
 
   app.post("/api/forms/:shareId/submit", async (req, res) => {
     try {
+      // Rate limit check
+      const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkRateLimit(clientIp)) {
+        return res.status(429).json({ error: "Too many submissions. Please try again later." });
+      }
+
       let templateId: string;
       let cruiseId: string | null = null;
 
@@ -556,26 +621,23 @@ export async function registerRoutes(
 
       const { answers, customerName, customerPhone } = parseResult.data;
 
-      // If this is a cruise form, update inventory totals
+      // If this is a cruise form, update inventory totals atomically within a transaction
       if (cruiseId) {
+        const inventoryItems: Array<{ stepId: string; choiceId: string; quantity: number; label: string }> = [];
         for (const [stepId, answer] of Object.entries(answers)) {
           if (Array.isArray(answer)) {
             for (const qa of answer) {
               if (qa.quantity > 0) {
-                // Check stock limits
-                const inventoryItem = await storage.getInventoryItem(cruiseId, stepId, qa.choiceId);
-                if (inventoryItem?.stockLimit) {
-                  const remaining = inventoryItem.stockLimit - inventoryItem.totalOrdered;
-                  if (qa.quantity > remaining) {
-                    return res.status(400).json({ 
-                      error: `Not enough stock for ${qa.label}. Only ${remaining} remaining.` 
-                    });
-                  }
-                }
-                // Update totals
-                await storage.updateInventoryTotals(cruiseId, stepId, qa.choiceId, qa.quantity);
+                inventoryItems.push({ stepId, choiceId: qa.choiceId, quantity: qa.quantity, label: qa.label });
               }
             }
+          }
+        }
+
+        if (inventoryItems.length > 0) {
+          const result = await storage.checkAndUpdateInventory(cruiseId, inventoryItems);
+          if (!result.success) {
+            return res.status(400).json({ error: result.error });
           }
         }
       }

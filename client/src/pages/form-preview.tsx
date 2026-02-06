@@ -162,12 +162,14 @@ export default function FormPreview() {
   const handleQuantitySubmit = () => {
     if (!currentStep || currentStep.type !== "quantity" || !currentStep.quantityChoices) return;
 
-    const quantityAnswers: QuantityAnswer[] = currentStep.quantityChoices.map(choice => ({
-      choiceId: choice.id,
-      label: choice.label,
-      quantity: quantitySelections[choice.id] || 0,
-      price: choice.price || 0,
-    }));
+    const quantityAnswers: QuantityAnswer[] = currentStep.quantityChoices
+      .filter(choice => !choice.isNoThanks)
+      .map(choice => ({
+        choiceId: choice.id,
+        label: choice.label,
+        quantity: quantitySelections[choice.id] || 0,
+        price: choice.price || 0,
+      }));
 
     const newAnswers = { ...answers, [currentStep.id]: quantityAnswers };
     setAnswers(newAnswers);
