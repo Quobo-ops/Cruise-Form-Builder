@@ -44,6 +44,8 @@ export default function FormBuilder() {
   const pendingChangesRef = useRef(false);
   const isSavingRef = useRef(false);
   const lastSavedDataRef = useRef<{ name: string; graph: FormGraph | null }>({ name: "", graph: null });
+  const graphRef = useRef<FormGraph | null>(null);
+  const templateNameRef = useRef("");
 
   const { data: template, isLoading } = useQuery<Template>({
     queryKey: ["/api/templates", id],
@@ -66,6 +68,14 @@ export default function FormBuilder() {
       isInitialized.current = true;
     }
   }, [template]);
+
+  useEffect(() => {
+    graphRef.current = graph;
+  }, [graph]);
+
+  useEffect(() => {
+    templateNameRef.current = templateName;
+  }, [templateName]);
 
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < graphHistory.length - 1;
@@ -114,6 +124,10 @@ export default function FormBuilder() {
       pendingChangesRef.current = false;
       isSavingRef.current = false;
       setAutoSaveStatus("saved");
+      // Update the query cache so navigating away and back shows latest data
+      queryClient.setQueryData(["/api/templates", id], (old: Template | undefined) =>
+        old ? { ...old, name: variables.name, graph: variables.graph } : old
+      );
     },
     onError: () => {
       isSavingRef.current = false;
@@ -182,25 +196,34 @@ export default function FormBuilder() {
   }, [graph, templateName, autoSaveStatus]);
 
   useEffect(() => {
+    const flushSave = () => {
+      const currentGraph = graphRef.current;
+      const currentName = templateNameRef.current;
+      if (!pendingChangesRef.current || !currentGraph || !currentName || isSavingRef.current) return;
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+      // Use fetch with keepalive to ensure the request completes during page unload
+      fetch(`/api/templates/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: currentName, graph: currentGraph }),
+        credentials: "include",
+        keepalive: true,
+      });
+    };
+
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (pendingChangesRef.current && graph && templateName && !isSavingRef.current) {
-        if (autoSaveTimeoutRef.current) {
-          clearTimeout(autoSaveTimeoutRef.current);
-        }
-        isSavingRef.current = true;
-        saveMutation.mutate({ name: templateName, graph });
+      if (pendingChangesRef.current && graphRef.current && templateNameRef.current && !isSavingRef.current) {
+        flushSave();
         e.preventDefault();
         e.returnValue = "";
       }
     };
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden" && pendingChangesRef.current && graph && templateName && !isSavingRef.current) {
-        if (autoSaveTimeoutRef.current) {
-          clearTimeout(autoSaveTimeoutRef.current);
-        }
-        isSavingRef.current = true;
-        saveMutation.mutate({ name: templateName, graph });
+      if (document.visibilityState === "hidden") {
+        flushSave();
       }
     };
 
@@ -214,7 +237,36 @@ export default function FormBuilder() {
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-  }, [graph, templateName, saveMutation]);
+  }, [id]);
+
+  // Save pending changes on component unmount (handles SPA navigation via Wouter)
+  useEffect(() => {
+    return () => {
+      const currentGraph = graphRef.current;
+      const currentName = templateNameRef.current;
+
+      if (!currentGraph || !currentName || !isInitialized.current) return;
+
+      // Update query cache so navigating back shows latest data
+      queryClient.setQueryData(["/api/templates", id], (old: Template | undefined) =>
+        old ? { ...old, name: currentName, graph: currentGraph } : old
+      );
+
+      // If there are unsaved changes, fire off a save request
+      if (pendingChangesRef.current && !isSavingRef.current) {
+        if (autoSaveTimeoutRef.current) {
+          clearTimeout(autoSaveTimeoutRef.current);
+        }
+        fetch(`/api/templates/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: currentName, graph: currentGraph }),
+          credentials: "include",
+          keepalive: true,
+        });
+      }
+    };
+  }, [id]);
 
   const publishMutation = useMutation({
     mutationFn: async () => {
