@@ -123,16 +123,8 @@ export default function AdminDashboard() {
       return await apiRequest("POST", "/api/templates", { 
         name,
         graph: {
-          rootStepId: "step-1",
-          steps: {
-            "step-1": {
-              id: "step-1",
-              type: "text",
-              question: "What is your name?",
-              placeholder: "Enter your full name",
-              nextStepId: null
-            }
-          }
+          rootStepId: null,
+          steps: {}
         },
         published: false,
         shareId: null
@@ -641,8 +633,8 @@ export default function AdminDashboard() {
                           <span className="text-xs text-muted-foreground ml-auto">
                             {new Date(cruise.startDate).toLocaleDateString()}
                           </span>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
@@ -774,7 +766,7 @@ export default function AdminDashboard() {
                 {filteredTemplates.map((template) => (
                   <Card
                     key={template.id}
-                    className="hover-elevate cursor-pointer group focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                    className="hover-elevate cursor-pointer group relative focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                     onClick={() => setLocation(`/admin/builder/${template.id}?from=templates`)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
@@ -787,37 +779,11 @@ export default function AdminDashboard() {
                     aria-label={`Edit template: ${template.name}`}
                   >
                     <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <CardTitle className="text-lg truncate">{template.name}</CardTitle>
-                          <CardDescription className="mt-1">
-                            {Object.keys(template.graph?.steps || {}).length} steps
-                          </CardDescription>
-                        </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" className="sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" data-testid={`button-menu-${template.id}`}>
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={(e) => { e.stopPropagation(); duplicateMutation.mutate(template.id); }}
-                              className="flex items-center gap-2"
-                            >
-                              <Copy className="w-4 h-4" />
-                              Duplicate
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={(e) => { e.stopPropagation(); setDeleteTemplateId(template.id); }}
-                              className="flex items-center gap-2 text-destructive"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-lg truncate">{template.name}</CardTitle>
+                        <CardDescription className="mt-1">
+                          {Object.keys(template.graph?.steps || {}).length} steps
+                        </CardDescription>
                       </div>
                     </CardHeader>
                     <CardContent>
@@ -826,25 +792,34 @@ export default function AdminDashboard() {
                           {template.cruiseCount || 0} {template.cruiseCount === 1 ? 'cruise' : 'cruises'}
                         </Badge>
                       </div>
-                      {/* Inline quick actions */}
                       <div className="flex items-center gap-2 pt-2 border-t" onClick={(e) => e.stopPropagation()}>
                         <Button
                           variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs gap-1.5"
-                          onClick={() => setLocation(`/admin/builder/${template.id}?from=templates`)}
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setLocation(`/admin/preview/${template.id}`)}
+                          title="Preview form"
                         >
-                          <Edit className="w-3 h-3" />
-                          Edit
+                          <Eye className="w-3.5 h-3.5 text-muted-foreground" />
                         </Button>
                         <Button
                           variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs gap-1.5"
-                          onClick={() => setLocation(`/admin/preview/${template.id}`)}
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => duplicateMutation.mutate(template.id)}
+                          title="Duplicate template"
                         >
-                          <Eye className="w-3 h-3" />
-                          Preview
+                          <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={(e) => { e.stopPropagation(); setDeleteTemplateId(template.id); }}
+                          title="Delete template"
+                          data-testid={`button-delete-${template.id}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
                     </CardContent>

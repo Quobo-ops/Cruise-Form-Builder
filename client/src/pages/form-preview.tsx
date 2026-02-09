@@ -106,7 +106,9 @@ export default function FormPreview() {
       }
     };
     
-    traverse(graph.rootStepId);
+    if (graph.rootStepId) {
+      traverse(graph.rootStepId);
+    }
     return steps;
   }, [graph]);
 

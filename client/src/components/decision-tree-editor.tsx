@@ -1242,7 +1242,7 @@ function DraggableLinearChain({
                 onRevertStep={onRevertStep}
                 isRoot={isRoot}
                 depth={0}
-                visitedSteps={chainVisited}
+                visitedSteps={parentVisited}
                 renderChildren={false}
               />
 
@@ -1318,7 +1318,7 @@ function DraggableLinearChain({
                         onRevertStep={onRevertStep}
                         isRoot={isRoot}
                         depth={0}
-                        visitedSteps={chainVisited}
+                        visitedSteps={parentVisited}
                         renderChildren={false}
                         dragHandleListeners={dragListeners}
                       />
@@ -1345,7 +1345,7 @@ function DraggableLinearChain({
                             onRevertStep={onRevertStep}
                             isRoot={isRoot}
                             depth={0}
-                            visitedSteps={chainVisited}
+                            visitedSteps={parentVisited}
                             renderChildren={false}
                           />
                         </div>
@@ -1699,40 +1699,55 @@ export function DecisionTreeEditor({
 
   if (!graph.rootStepId || !graph.steps[graph.rootStepId]) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
+      <div className="flex flex-col items-center justify-center py-16">
         <div className="text-center mb-6">
           <h3 className="text-lg font-semibold mb-2">Start Building Your Decision Tree</h3>
-          <p className="text-sm text-muted-foreground">Choose how to begin your form flow</p>
+          <p className="text-sm text-muted-foreground">Click the button below to add your first step</p>
         </div>
-        <div className="flex gap-3 flex-wrap justify-center">
-          <Button
-            variant="outline"
-            className="gap-2"
-            onClick={() => createFirstStep("text")}
-            data-testid="button-create-first-text"
-          >
-            <MessageSquare className="w-4 h-4" />
-            Text Input
-          </Button>
-          <Button
-            variant="outline"
-            className="gap-2"
-            onClick={() => createFirstStep("choice")}
-            data-testid="button-create-first-choice"
-          >
-            <List className="w-4 h-4" />
-            Multiple Choice
-          </Button>
-          <Button
-            variant="outline"
-            className="gap-2"
-            onClick={() => createFirstStep("quantity")}
-            data-testid="button-create-first-quantity"
-          >
-            <ShoppingCart className="w-4 h-4" />
-            Quantity Selector
-          </Button>
-        </div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              className="rounded-full w-12 h-12 bg-background border-2 border-dashed border-primary/50 hover:border-primary hover:bg-primary/10"
+              data-testid="button-create-first-step"
+            >
+              <Plus className="w-6 h-6 text-primary" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-56 p-2" align="center" side="bottom" sideOffset={5}>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground mb-2 px-2">Choose your first step:</p>
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-2 h-9"
+                onClick={() => createFirstStep("text")}
+                data-testid="option-create-first-text"
+              >
+                <MessageSquare className="w-4 h-4" />
+                Text Input
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-2 h-9"
+                onClick={() => createFirstStep("choice")}
+                data-testid="option-create-first-choice"
+              >
+                <List className="w-4 h-4" />
+                Multiple Choice
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-2 h-9"
+                onClick={() => createFirstStep("quantity")}
+                data-testid="option-create-first-quantity"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                Quantity Selector
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
     );
   }
@@ -1741,7 +1756,7 @@ export function DecisionTreeEditor({
     <div className="w-full overflow-x-auto pb-8">
       <div className="flex justify-center min-w-max py-6 px-4">
         <DraggableLinearChain
-          startStepId={graph.rootStepId}
+          startStepId={graph.rootStepId!}
           graph={graph}
           onGraphChange={onGraphChange}
           selectedStepId={selectedStepId}

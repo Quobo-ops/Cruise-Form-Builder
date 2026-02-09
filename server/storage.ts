@@ -90,6 +90,7 @@ export interface IStorage {
 
   // Per-form submissions
   getFormSubmissionStats(cruiseId: string): Promise<Array<{ cruiseFormId: string; submissionCount: number; unviewedCount: number }>>;
+  getSubmissionsByForm(cruiseFormId: string): Promise<Submission[]>;
   getSubmissionsByFormPaginated(cruiseFormId: string, params: PaginationParams): Promise<PaginatedResult<Submission>>;
 
   // Audit logs
@@ -547,6 +548,12 @@ export class DatabaseStorage implements IStorage {
       submissionCount: s.submissionCount,
       unviewedCount: s.unviewedCount,
     }));
+  }
+
+  async getSubmissionsByForm(cruiseFormId: string): Promise<Submission[]> {
+    return await db.select().from(submissions)
+      .where(eq(submissions.cruiseFormId, cruiseFormId))
+      .orderBy(desc(submissions.createdAt));
   }
 
   async getSubmissionsByFormPaginated(cruiseFormId: string, params: PaginationParams): Promise<PaginatedResult<Submission>> {

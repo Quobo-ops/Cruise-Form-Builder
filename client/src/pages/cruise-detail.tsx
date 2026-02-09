@@ -34,9 +34,7 @@ import {
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Ship, Copy, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Upload, Trash2, Info, Eye, ClipboardList, Plus, ExternalLink, Pencil, FileText, Bell, Download
-import { 
-  Ship, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Upload, Trash2, Info, Eye, ClipboardList, Plus, ExternalLink, Pencil, Share2
+  Ship, Copy, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Upload, Trash2, Info, Eye, ClipboardList, Plus, ExternalLink, Pencil, FileText, Bell, Download, Share2, FileSpreadsheet, FileDown
 } from "lucide-react";
 import {
   Select,
@@ -45,6 +43,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -90,6 +94,7 @@ export default function CruiseDetail() {
   // Active form filter for Clients tab
   const [activeFormId, setActiveFormId] = useState<string | null>(null);
   const [clientSearchTerm, setClientSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState("forms");
 
   const [learnMoreHeader, setLearnMoreHeader] = useState("");
   const [learnMoreImages, setLearnMoreImages] = useState<string[]>([]);
@@ -541,19 +546,6 @@ export default function CruiseDetail() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <ThemeToggle />
-            <Button 
-              variant="outline" 
-              onClick={() => setLocation(`/admin/preview/${cruise.templateId}?cruise=${cruise.id}`)} 
-              className="gap-2" 
-              data-testid="button-preview-form"
-            >
-              <Eye className="w-4 h-4" />
-              <span className="hidden sm:inline">Preview Form</span>
-            </Button>
-            <Button variant="outline" onClick={startEditing} className="gap-2" data-testid="button-edit-cruise">
-              <Edit className="w-4 h-4" />
-              <span className="hidden sm:inline">Edit</span>
-            </Button>
           </div>
         </div>
       </header>
@@ -561,7 +553,19 @@ export default function CruiseDetail() {
       <main className="container mx-auto px-4 py-6 space-y-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-semibold truncate">{cruise.name}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold truncate">{cruise.name}</h1>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 flex-shrink-0"
+                onClick={startEditing}
+                title="Edit cruise details"
+                data-testid="button-edit-cruise"
+              >
+                <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+              </Button>
+            </div>
             {cruise.description && (
               <p className="text-sm text-muted-foreground mt-0.5 truncate">{cruise.description}</p>
             )}
@@ -583,7 +587,7 @@ export default function CruiseDetail() {
           </div>
         </div>
 
-        <Tabs defaultValue="forms" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList>
             <TabsTrigger value="forms" className="gap-1.5" data-testid="tab-forms">
               <ClipboardList className="w-4 h-4" />
@@ -682,12 +686,50 @@ export default function CruiseDetail() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => window.open(`/form/${form.shareId}`, "_blank")}
-                                title="Open form"
-                                data-testid={`button-open-form-${form.id}`}
+                                onClick={() => setLocation(`/admin/preview/${form.templateId}?cruise=${cruise.id}`)}
+                                title="Preview form"
+                                data-testid={`button-preview-form-${form.id}`}
                               >
-                                <ExternalLink className="w-4 h-4" />
+                                <Eye className="w-4 h-4" />
                               </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setActiveFormId(form.id);
+                                  setActiveTab("clients");
+                                }}
+                                title="Manage submissions"
+                                data-testid={`button-manage-submissions-${form.id}`}
+                              >
+                                <Users className="w-4 h-4" />
+                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    title="Export submissions"
+                                    data-testid={`button-export-form-${form.id}`}
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => window.open(`/api/cruises/${id}/forms/${form.id}/submissions/export/excel`, "_blank")}>
+                                    <FileSpreadsheet className="w-4 h-4 mr-2" />
+                                    Export as Excel
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => window.open(`/api/cruises/${id}/forms/${form.id}/submissions/export/pdf`, "_blank")}>
+                                    <FileDown className="w-4 h-4 mr-2" />
+                                    Export as PDF
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => window.open(`/api/cruises/${id}/submissions/export`, "_blank")}>
+                                    <Download className="w-4 h-4 mr-2" />
+                                    Export as CSV
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                               <Switch
                                 checked={form.isActive ?? true}
                                 onCheckedChange={(checked) =>
@@ -733,10 +775,38 @@ export default function CruiseDetail() {
           <TabsContent value="inventory">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">Inventory Tracking</CardTitle>
-                <CardDescription>
-                  Manage stock limits for items with quantity selection.
-                </CardDescription>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <CardTitle className="text-base">Inventory Tracking</CardTitle>
+                    <CardDescription>
+                      Manage stock limits for items with quantity selection.
+                    </CardDescription>
+                  </div>
+                  {inventory && inventory.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="gap-1.5">
+                          <Download className="w-4 h-4" />
+                          <span className="hidden sm:inline">Export</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => window.open(`/api/cruises/${id}/inventory/export/excel`, "_blank")}>
+                          <FileSpreadsheet className="w-4 h-4 mr-2" />
+                          Export as Excel
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => window.open(`/api/cruises/${id}/inventory/export/pdf`, "_blank")}>
+                          <FileDown className="w-4 h-4 mr-2" />
+                          Export as PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => window.open(`/api/cruises/${id}/inventory/export/csv`, "_blank")}>
+                          <Download className="w-4 h-4 mr-2" />
+                          Export as CSV
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {inventory && inventory.length > 0 ? (
@@ -1044,15 +1114,38 @@ export default function CruiseDetail() {
                             Mark All Read
                           </Button>
                         )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => window.open(`/api/cruises/${id}/submissions/export`, "_blank")}
-                          className="gap-1.5"
-                        >
-                          <Download className="w-4 h-4" />
-                          <span className="hidden sm:inline">CSV</span>
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="gap-1.5">
+                              <Download className="w-4 h-4" />
+                              <span className="hidden sm:inline">Export</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => {
+                              const url = activeFormId
+                                ? `/api/cruises/${id}/forms/${activeFormId}/submissions/export/excel`
+                                : `/api/cruises/${id}/submissions/export/excel`;
+                              window.open(url, "_blank");
+                            }}>
+                              <FileSpreadsheet className="w-4 h-4 mr-2" />
+                              Export as Excel
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {
+                              const url = activeFormId
+                                ? `/api/cruises/${id}/forms/${activeFormId}/submissions/export/pdf`
+                                : `/api/cruises/${id}/submissions/export/pdf`;
+                              window.open(url, "_blank");
+                            }}>
+                              <FileDown className="w-4 h-4 mr-2" />
+                              Export as PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => window.open(`/api/cruises/${id}/submissions/export`, "_blank")}>
+                              <Download className="w-4 h-4 mr-2" />
+                              Export as CSV
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                   </CardHeader>

@@ -47,7 +47,7 @@ export const stepSchema = z.object({
 export type Step = z.infer<typeof stepSchema>;
 
 export const graphSchema = z.object({
-  rootStepId: z.string(),
+  rootStepId: z.string().nullable(),
   steps: z.record(z.string(), stepSchema),
 });
 
