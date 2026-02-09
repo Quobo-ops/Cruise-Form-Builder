@@ -34,7 +34,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { 
   Ship, Plus, MoreVertical, Edit, Copy, Trash2, Eye, 
-  ExternalLink, Search, ClipboardList, LogOut, Loader2, Anchor, Bell, Users, X, ChevronRight
+  Search, ClipboardList, LogOut, Loader2, Anchor, Bell, Users, X, ChevronRight
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -259,22 +259,6 @@ export default function AdminDashboard() {
     c.name.toLowerCase().includes(cruiseSearchTerm.toLowerCase())
   );
 
-  const copyCruiseLink = async (shareId: string) => {
-    const url = `${window.location.origin}/form/${shareId}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast({
-        title: "Link copied",
-        description: "The cruise form link has been copied to your clipboard.",
-      });
-    } catch {
-      toast({
-        title: "Copy failed",
-        description: "Could not copy to clipboard. Please copy the link manually.",
-        variant: "destructive",
-      });
-    }
-  };
 
   const getTemplateName = (templateId: string) => {
     return templates?.find(t => t.id === templateId)?.name || "Unknown Template";
@@ -566,23 +550,13 @@ export default function AdminDashboard() {
                           <Badge variant="outline">Inactive</Badge>
                         )}
                       </div>
-                      {/* Inline quick actions */}
-                      <div className="flex items-center gap-2 pt-2 border-t" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs gap-1.5"
-                          onClick={() => copyCruiseLink(cruise.shareId)}
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Copy Link
-                        </Button>
-                        {cruise.startDate && (
+                      {cruise.startDate && (
+                        <div className="flex items-center gap-2 pt-2 border-t">
                           <span className="text-xs text-muted-foreground ml-auto">
                             {new Date(cruise.startDate).toLocaleDateString()}
                           </span>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))}

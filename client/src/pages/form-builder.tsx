@@ -340,23 +340,13 @@ export default function FormBuilder() {
     mutationFn: async () => {
       return await apiRequest("POST", `/api/templates/${id}/publish`);
     },
-    onSuccess: async (response) => {
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/templates", id] });
-      const data = await response.json();
       setIsPublishDialogOpen(false);
-      const url = `${window.location.origin}/form/${data.shareId}`;
-      try {
-        await navigator.clipboard.writeText(url);
-        toast({
-          title: "Template published!",
-          description: "Shareable link copied to clipboard.",
-        });
-      } catch {
-        toast({
-          title: "Template published!",
-          description: "Template is now live. Copy the link from the dashboard.",
-        });
-      }
+      toast({
+        title: "Template published!",
+        description: "Template is now live.",
+      });
     },
     onError: () => {
       toast({
@@ -558,12 +548,10 @@ export default function FormBuilder() {
               className="gap-2"
               data-testid="button-publish-confirm"
             >
-              {publishMutation.isPending ? (
+              {publishMutation.isPending && (
                 <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Share2 className="w-4 h-4" />
               )}
-              Publish & Copy Link
+              Publish
             </Button>
           </DialogFooter>
         </DialogContent>
