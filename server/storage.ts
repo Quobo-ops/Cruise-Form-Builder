@@ -574,4 +574,9 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
+/** Escape special characters in a SQL LIKE/ILIKE pattern so they are treated as literals. */
+function escapeLike(value: string): string {
+  return value.replace(/[%_\\]/g, (ch) => `\\${ch}`);
+}
+
 export const storage = new DatabaseStorage();

@@ -124,10 +124,18 @@ export default function CruiseDetail() {
     enabled: !!id && isAuthenticated,
   });
 
-  const { data: submissions } = useQuery<Submission[]>({
+  const { data: submissionsResponse } = useQuery<{
+    data: Submission[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }>({
     queryKey: ["/api/cruises", id, "submissions"],
     enabled: !!id && isAuthenticated,
   });
+
+  const submissions = submissionsResponse?.data;
 
   const { data: allTemplates } = useQuery<Template[]>({
     queryKey: ["/api/templates"],
