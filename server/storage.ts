@@ -88,6 +88,10 @@ export interface IStorage {
   markSubmissionViewed(submissionId: string): Promise<Submission | undefined>;
   createSubmission(submission: InsertSubmission): Promise<Submission>;
 
+  // Per-form submissions
+  getFormSubmissionStats(cruiseId: string): Promise<Array<{ cruiseFormId: string; submissionCount: number; unviewedCount: number }>>;
+  getSubmissionsByFormPaginated(cruiseFormId: string, params: PaginationParams): Promise<PaginatedResult<Submission>>;
+
   // Audit logs
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
   getAuditLogs(params: PaginationParams): Promise<PaginatedResult<AuditLog>>;
@@ -526,6 +530,61 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
+  // Per-form submission stats
+  async getFormSubmissionStats(cruiseId: string): Promise<Array<{ cruiseFormId: string; submissionCount: number; unviewedCount: number }>> {
+    const stats = await db
+      .select({
+        cruiseFormId: submissions.cruiseFormId,
+        submissionCount: sql<number>`count(*)::int`,
+        unviewedCount: sql<number>`count(*) FILTER (WHERE ${submissions.isViewed} = false)::int`,
+      })
+      .from(submissions)
+      .where(eq(submissions.cruiseId, cruiseId))
+      .groupBy(submissions.cruiseFormId);
+
+    return stats.map(s => ({
+      cruiseFormId: s.cruiseFormId || '__unlinked__',
+      submissionCount: s.submissionCount,
+      unviewedCount: s.unviewedCount,
+    }));
+  }
+
+  async getSubmissionsByFormPaginated(cruiseFormId: string, params: PaginationParams): Promise<PaginatedResult<Submission>> {
+    const page = params.page || 1;
+    const limit = Math.min(params.limit || 20, 100);
+    const offset = (page - 1) * limit;
+
+    const conditions = [eq(submissions.cruiseFormId, cruiseFormId)];
+    if (params.search) {
+      conditions.push(
+        or(
+          ilike(submissions.customerName, `%${escapeLike(params.search)}%`),
+          ilike(submissions.customerPhone, `%${escapeLike(params.search)}%`),
+        )!
+      );
+    }
+    const whereClause = and(...conditions);
+
+    const [{ count: total }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(submissions)
+      .where(whereClause);
+
+    const data = await db.select().from(submissions)
+      .where(whereClause)
+      .orderBy(desc(submissions.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
   // Audit logs
   async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
     const [created] = await db.insert(auditLogs).values(log).returning();
@@ -576,11 +635,6 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return created;
   }
-}
-
-/** Escape special characters in a SQL LIKE/ILIKE pattern so they are treated as literals. */
-function escapeLike(value: string): string {
-  return value.replace(/[%_\\]/g, (ch) => `\\${ch}`);
 }
 
 export const storage = new DatabaseStorage();

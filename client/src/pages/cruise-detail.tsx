@@ -33,6 +33,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Ship, Copy, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Upload, Trash2, Info, Eye, ClipboardList, Plus, ExternalLink, Pencil, FileText, Bell, Download
 import { 
   Ship, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Upload, Trash2, Info, Eye, ClipboardList, Plus, ExternalLink, Pencil, Share2
 } from "lucide-react";
@@ -54,10 +56,15 @@ import { useUpload } from "@/hooks/use-upload";
 import { useNavigationGuard } from "@/hooks/use-navigation-guard";
 import { UnsavedChangesDialog } from "@/components/unsaved-changes-dialog";
 
+type CruiseFormWithStats = CruiseForm & {
+  submissionCount: number;
+  unviewedCount: number;
+};
+
 type CruiseWithCounts = Cruise & {
   submissionCount: number;
   unviewedCount: number;
-  forms?: CruiseForm[];
+  forms?: CruiseFormWithStats[];
 };
 
 export default function CruiseDetail() {
@@ -79,6 +86,10 @@ export default function CruiseDetail() {
   const [newFormLabel, setNewFormLabel] = useState("");
   const [newFormStage, setNewFormStage] = useState("booking");
   const [newFormTemplateId, setNewFormTemplateId] = useState("");
+
+  // Active form filter for Clients tab
+  const [activeFormId, setActiveFormId] = useState<string | null>(null);
+  const [clientSearchTerm, setClientSearchTerm] = useState("");
 
   const [learnMoreHeader, setLearnMoreHeader] = useState("");
   const [learnMoreImages, setLearnMoreImages] = useState<string[]>([]);
@@ -136,6 +147,28 @@ export default function CruiseDetail() {
   });
 
   const submissions = submissionsResponse?.data;
+
+  // Per-form submissions query (when a specific form tab is selected)
+  const { data: formSubmissionsResponse } = useQuery<{
+    data: Submission[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }>({
+    queryKey: ["/api/cruises", id, "forms", activeFormId, "submissions", clientSearchTerm ? `?search=${clientSearchTerm}` : ""],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (clientSearchTerm) params.set("search", clientSearchTerm);
+      const res = await fetch(`/api/cruises/${id}/forms/${activeFormId}/submissions?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: !!id && !!activeFormId && isAuthenticated,
+  });
+
+  // Determine which submissions to display
+  const displayedSubmissions = activeFormId ? formSubmissionsResponse?.data : submissions;
 
   const { data: allTemplates } = useQuery<Template[]>({
     queryKey: ["/api/templates"],
@@ -596,6 +629,7 @@ export default function CruiseDetail() {
                   <div className="space-y-3">
                     {cruise.forms.map((form) => {
                       const formTemplate = allTemplates?.find(t => t.id === form.templateId);
+                      const formWithStats = form as CruiseFormWithStats;
                       return (
                         <div
                           key={form.id}
@@ -614,9 +648,14 @@ export default function CruiseDetail() {
                                 ) : (
                                   <Badge variant="secondary" className="text-xs">Inactive</Badge>
                                 )}
+                                {formWithStats.unviewedCount > 0 && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    {formWithStats.unviewedCount} new
+                                  </Badge>
+                                )}
                               </div>
                               <p className="text-sm text-muted-foreground mt-1">
-                                Template: {formTemplate?.name || "Unknown"}
+                                Template: {formTemplate?.name || "Unknown"} · {formWithStats.submissionCount || 0} submission{(formWithStats.submissionCount || 0) !== 1 ? "s" : ""}
                               </p>
                             </div>
                             <div className="flex items-center gap-1 flex-shrink-0">
@@ -883,122 +922,249 @@ export default function CruiseDetail() {
           </TabsContent>
 
           <TabsContent value="clients">
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base">Client Submissions</CardTitle>
-                    <CardDescription>
-                      View all signups for this cruise.
-                    </CardDescription>
-                  </div>
-                  {submissions && submissions.some(s => !s.isViewed) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => markAllViewedMutation.mutate()}
-                      disabled={markAllViewedMutation.isPending}
-                    >
-                      {markAllViewedMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : null}
-                      Mark All as Read
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                {submissions && submissions.length > 0 ? (
-                  <>
-                    {/* Mobile view - cards */}
-                    <div className="md:hidden space-y-3">
-                      {submissions.map((submission) => (
-                        <div 
-                          key={submission.id} 
-                          className={`p-4 border rounded-md hover-elevate cursor-pointer relative ${
-                            !submission.isViewed ? "border-primary/50 bg-primary/5" : ""
-                          }`}
-                          onClick={() => handleSelectSubmission(submission)}
-                          data-testid={`card-submission-${submission.id}`}
-                        >
-                          {!submission.isViewed && (
-                            <div className="w-2 h-2 rounded-full bg-primary absolute top-3 right-3" />
-                          )}
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                <User className="w-5 h-5 text-primary" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-medium truncate">{submission.customerName || "Unknown"}</p>
-                                <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                                  <Phone className="w-3 h-3 flex-shrink-0" />
-                                  <span className="truncate">{submission.customerPhone || "N/A"}</span>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="text-right flex-shrink-0">
-                              <p className="text-xs text-muted-foreground">
-                                {submission.createdAt ? new Date(submission.createdAt).toLocaleDateString() : "N/A"}
-                              </p>
-                            </div>
-                          </div>
+            <div className="flex flex-col md:flex-row gap-4">
+              {/* Left sidebar - Form tabs */}
+              {cruise.forms && cruise.forms.length > 0 && (
+                <div className="md:w-64 flex-shrink-0">
+                  <div className="bg-card border rounded-xl overflow-hidden">
+                    <div className="p-3 border-b bg-muted/30">
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Form Filters</h3>
+                    </div>
+                    <nav className="p-2 space-y-1">
+                      {/* All forms tab */}
+                      <button
+                        onClick={() => { setActiveFormId(null); setClientSearchTerm(""); }}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-all ${
+                          activeFormId === null
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "hover:bg-muted/60 text-foreground"
+                        }`}
+                        data-testid="form-filter-all"
+                      >
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                          activeFormId === null ? "bg-primary-foreground/20" : "bg-muted"
+                        }`}>
+                          <Users className="w-4 h-4" />
                         </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">All Forms</p>
+                          <p className={`text-xs ${activeFormId === null ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                            {cruise.submissionCount} total
+                          </p>
+                        </div>
+                        {cruise.unviewedCount > 0 && (
+                          <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                            activeFormId === null
+                              ? "bg-primary-foreground/20 text-primary-foreground"
+                              : "bg-destructive text-destructive-foreground"
+                          }`}>
+                            {cruise.unviewedCount}
+                          </span>
+                        )}
+                      </button>
+
+                      {/* Divider */}
+                      <div className="h-px bg-border mx-2 my-1" />
+
+                      {/* Individual form tabs */}
+                      {cruise.forms.map((form) => (
+                        <button
+                          key={form.id}
+                          onClick={() => { setActiveFormId(form.id); setClientSearchTerm(""); }}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-all ${
+                            activeFormId === form.id
+                              ? "bg-primary text-primary-foreground shadow-sm"
+                              : "hover:bg-muted/60 text-foreground"
+                          }`}
+                          data-testid={`form-filter-${form.id}`}
+                        >
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                            activeFormId === form.id ? "bg-primary-foreground/20" : "bg-muted"
+                          }`}>
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium truncate">{form.label}</p>
+                            <p className={`text-xs ${activeFormId === form.id ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                              {form.submissionCount} signup{form.submissionCount !== 1 ? "s" : ""}
+                              {form.stage !== "booking" && ` · ${form.stage}`}
+                            </p>
+                          </div>
+                          {form.unviewedCount > 0 && (
+                            <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                              activeFormId === form.id
+                                ? "bg-primary-foreground/20 text-primary-foreground"
+                                : "bg-destructive text-destructive-foreground"
+                            }`}>
+                              {form.unviewedCount}
+                            </span>
+                          )}
+                          {!form.isActive && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">Off</Badge>
+                          )}
+                        </button>
                       ))}
-                    </div>
-                    
-                    {/* Desktop view - table */}
-                    <div className="hidden md:block">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Name</TableHead>
-                            <TableHead>Phone</TableHead>
-                            <TableHead>Submitted</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {submissions.map((submission) => (
-                            <TableRow key={submission.id} className={!submission.isViewed ? "bg-primary/5" : ""}>
-                              <TableCell className="font-medium">
-                                <div className="flex items-center gap-2">
-                                  {!submission.isViewed && (
-                                    <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
-                                  )}
-                                  {submission.customerName || "Unknown"}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                {submission.customerPhone || "N/A"}
-                              </TableCell>
-                              <TableCell>
-                                {submission.createdAt ? new Date(submission.createdAt).toLocaleDateString() : "N/A"}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleSelectSubmission(submission)}
-                                  data-testid={`button-view-submission-${submission.id}`}
-                                >
-                                  View Details
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-center py-8">
-                    <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">No submissions yet.</p>
+                    </nav>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                </div>
+              )}
+
+              {/* Right content - Submissions table */}
+              <div className="flex-1 min-w-0">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <CardTitle className="text-base">
+                          {activeFormId
+                            ? cruise.forms?.find(f => f.id === activeFormId)?.label || "Submissions"
+                            : "All Submissions"
+                          }
+                        </CardTitle>
+                        <CardDescription>
+                          {activeFormId
+                            ? `Viewing submissions for this form only`
+                            : `Viewing all ${cruise.submissionCount} signup${cruise.submissionCount !== 1 ? "s" : ""} across all forms`
+                          }
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {displayedSubmissions && displayedSubmissions.some(s => !s.isViewed) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => markAllViewedMutation.mutate()}
+                            disabled={markAllViewedMutation.isPending}
+                          >
+                            {markAllViewedMutation.isPending ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Eye className="w-4 h-4 mr-2" />
+                            )}
+                            Mark All Read
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(`/api/cruises/${id}/submissions/export`, "_blank")}
+                          className="gap-1.5"
+                        >
+                          <Download className="w-4 h-4" />
+                          <span className="hidden sm:inline">CSV</span>
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {displayedSubmissions && displayedSubmissions.length > 0 ? (
+                      <>
+                        {/* Mobile view - cards */}
+                        <div className="md:hidden space-y-3">
+                          {displayedSubmissions.map((submission) => (
+                            <div
+                              key={submission.id}
+                              className={`p-4 border rounded-md hover-elevate cursor-pointer relative ${
+                                !submission.isViewed ? "border-primary/50 bg-primary/5" : ""
+                              }`}
+                              onClick={() => handleSelectSubmission(submission)}
+                              data-testid={`card-submission-${submission.id}`}
+                            >
+                              {!submission.isViewed && (
+                                <div className="w-2 h-2 rounded-full bg-primary absolute top-3 right-3" />
+                              )}
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                    <User className="w-5 h-5 text-primary" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-medium truncate">{submission.customerName || "Unknown"}</p>
+                                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                      <Phone className="w-3 h-3 flex-shrink-0" />
+                                      <span className="truncate">{submission.customerPhone || "N/A"}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                  <p className="text-xs text-muted-foreground">
+                                    {submission.createdAt ? new Date(submission.createdAt).toLocaleDateString() : "N/A"}
+                                  </p>
+                                  {!activeFormId && submission.cruiseFormId && (
+                                    <Badge variant="outline" className="text-[10px] mt-1">
+                                      {cruise.forms?.find(f => f.id === submission.cruiseFormId)?.label || "Form"}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Desktop view - table */}
+                        <div className="hidden md:block">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Name</TableHead>
+                                <TableHead>Phone</TableHead>
+                                {!activeFormId && <TableHead>Form</TableHead>}
+                                <TableHead>Submitted</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {displayedSubmissions.map((submission) => (
+                                <TableRow key={submission.id} className={!submission.isViewed ? "bg-primary/5" : ""}>
+                                  <TableCell className="font-medium">
+                                    <div className="flex items-center gap-2">
+                                      {!submission.isViewed && (
+                                        <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                                      )}
+                                      {submission.customerName || "Unknown"}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    {submission.customerPhone || "N/A"}
+                                  </TableCell>
+                                  {!activeFormId && (
+                                    <TableCell>
+                                      <Badge variant="outline" className="text-xs">
+                                        {cruise.forms?.find(f => f.id === submission.cruiseFormId)?.label || "—"}
+                                      </Badge>
+                                    </TableCell>
+                                  )}
+                                  <TableCell>
+                                    {submission.createdAt ? new Date(submission.createdAt).toLocaleDateString() : "N/A"}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleSelectSubmission(submission)}
+                                      data-testid={`button-view-submission-${submission.id}`}
+                                    >
+                                      View Details
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center py-8">
+                        <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                        <p className="text-muted-foreground">
+                          {activeFormId ? "No submissions for this form yet." : "No submissions yet."}
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="learn-more">
