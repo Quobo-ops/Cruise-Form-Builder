@@ -171,10 +171,11 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`Cannot delete template: ${linkedCruises.length} cruise(s) are using it. Delete the cruises first.`);
     }
     // Soft delete
-    await db.update(templates)
+    const [deleted] = await db.update(templates)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(templates.id, id));
-    return true;
+      .where(and(eq(templates.id, id), isNull(templates.deletedAt)))
+      .returning();
+    return !!deleted;
   }
 
   // Cruises (soft delete aware)
@@ -243,7 +244,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCruiseByShareId(shareId: string): Promise<Cruise | undefined> {
-    const [cruise] = await db.select().from(cruises).where(eq(cruises.shareId, shareId));
+    const [cruise] = await db.select().from(cruises).where(
+      and(eq(cruises.shareId, shareId), isNull(cruises.deletedAt))
+    );
     return cruise;
   }
 
@@ -270,6 +273,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Cruise Forms
+  async getCruiseForm(id: string): Promise<CruiseForm | undefined> {
+    const [form] = await db.select().from(cruiseForms).where(eq(cruiseForms.id, id));
+    return form;
+  }
+
   async getCruiseForms(cruiseId: string): Promise<CruiseForm[]> {
     return await db.select().from(cruiseForms)
       .where(eq(cruiseForms.cruiseId, cruiseId))
@@ -296,7 +304,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteCruiseForm(id: string): Promise<void> {
-    await db.delete(cruiseForms).where(eq(cruiseForms.id, id));
+    // Soft-delete by deactivating the form instead of hard-deleting
+    await db.update(cruiseForms)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(cruiseForms.id, id));
   }
 
   async reorderCruiseForms(cruiseId: string, orderedIds: string[]): Promise<void> {
@@ -326,17 +337,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertInventoryItem(item: InsertCruiseInventory): Promise<CruiseInventory> {
-    const existing = await this.getInventoryItem(item.cruiseId, item.stepId, item.choiceId);
-    if (existing) {
-      const [updated] = await db
-        .update(cruiseInventory)
-        .set({ ...item, updatedAt: new Date() })
-        .where(eq(cruiseInventory.id, existing.id))
-        .returning();
-      return updated;
-    }
-    const [created] = await db.insert(cruiseInventory).values(item).returning();
-    return created;
+    const [result] = await db.insert(cruiseInventory)
+      .values(item)
+      .onConflictDoUpdate({
+        target: [cruiseInventory.cruiseId, cruiseInventory.stepId, cruiseInventory.choiceId],
+        set: {
+          choiceLabel: item.choiceLabel,
+          price: item.price,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return result;
   }
 
   async updateInventoryTotals(cruiseId: string, stepId: string, choiceId: string, quantityDelta: number): Promise<void> {
@@ -448,8 +460,8 @@ export class DatabaseStorage implements IStorage {
     if (params.search) {
       conditions.push(
         or(
-          ilike(submissions.customerName, `%${params.search}%`),
-          ilike(submissions.customerPhone, `%${params.search}%`),
+          ilike(submissions.customerName, `%${escapeLike(params.search)}%`),
+          ilike(submissions.customerPhone, `%${escapeLike(params.search)}%`),
         )!
       );
     }
@@ -476,17 +488,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSubmissionCountByCruise(cruiseId: string): Promise<number> {
-    const result = await db.select({ count: sql<number>`count(*)` })
+    const result = await db.select({ count: sql<number>`count(*)::int` })
       .from(submissions)
       .where(eq(submissions.cruiseId, cruiseId));
-    return Number(result[0]?.count || 0);
+    return result[0]?.count || 0;
   }
 
   async getUnviewedSubmissionCount(cruiseId: string): Promise<number> {
-    const result = await db.select({ count: sql<number>`count(*)` })
+    const result = await db.select({ count: sql<number>`count(*)::int` })
       .from(submissions)
       .where(and(eq(submissions.cruiseId, cruiseId), eq(submissions.isViewed, false)));
-    return Number(result[0]?.count || 0);
+    return result[0]?.count || 0;
   }
 
   async markSubmissionsViewed(cruiseId: string): Promise<void> {

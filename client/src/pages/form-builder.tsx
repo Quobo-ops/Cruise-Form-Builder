@@ -345,11 +345,18 @@ export default function FormBuilder() {
       const data = await response.json();
       setIsPublishDialogOpen(false);
       const url = `${window.location.origin}/form/${data.shareId}`;
-      navigator.clipboard.writeText(url);
-      toast({
-        title: "Template published!",
-        description: "Shareable link copied to clipboard.",
-      });
+      try {
+        await navigator.clipboard.writeText(url);
+        toast({
+          title: "Template published!",
+          description: "Shareable link copied to clipboard.",
+        });
+      } catch {
+        toast({
+          title: "Template published!",
+          description: "Template is now live. Copy the link from the dashboard.",
+        });
+      }
     },
     onError: () => {
       toast({

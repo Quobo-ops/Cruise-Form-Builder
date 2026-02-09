@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, jsonb, boolean, integer, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, jsonb, boolean, integer, numeric, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -159,7 +159,7 @@ export const submissions = pgTable("submissions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   templateId: varchar("template_id").notNull().references(() => templates.id),
   cruiseId: varchar("cruise_id").references(() => cruises.id),
-  cruiseFormId: varchar("cruise_form_id").references(() => cruiseForms.id),
+  cruiseFormId: varchar("cruise_form_id").references(() => cruiseForms.id, { onDelete: "set null" }),
   answers: jsonb("answers").notNull().$type<Record<string, string | QuantityAnswer[]>>(),
   customerName: text("customer_name"),
   customerPhone: text("customer_phone"),
@@ -188,7 +188,9 @@ export const cruiseInventory = pgTable("cruise_inventory", {
   totalOrdered: integer("total_ordered").notNull().default(0),
   stockLimit: integer("stock_limit"),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  unique("cruise_inventory_unique").on(table.cruiseId, table.stepId, table.choiceId),
+]);
 
 export const insertCruiseInventorySchema = createInsertSchema(cruiseInventory).omit({
   id: true,

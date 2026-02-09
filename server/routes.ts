@@ -1,5 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { createServer, type Server } from "http";
+import { type Server } from "http";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import pg from "pg";
@@ -216,7 +216,7 @@ export async function registerRoutes(
         secure: isProduction,
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        sameSite: isProduction ? "none" : "lax",
+        sameSite: "lax",
       },
     })
   );
@@ -607,7 +607,10 @@ export async function registerRoutes(
 
   app.delete("/api/cruises/:id", requireAuth, async (req, res) => {
     try {
-      await storage.deleteCruise(param(req, "id"));
+      const deleted = await storage.deleteCruise(param(req, "id"));
+      if (!deleted) {
+        return res.status(404).json({ error: "Cruise not found" });
+      }
       await audit(req, "cruise.delete", "cruise", param(req, "id"));
       res.json({ success: true });
     } catch (error) {
@@ -681,6 +684,12 @@ export async function registerRoutes(
         return res.status(400).json({ error: parseResult.error.errors[0]?.message ?? "Validation error" });
       }
 
+      // Verify the form belongs to the specified cruise
+      const existingForm = await storage.getCruiseForm(param(req, "formId"));
+      if (!existingForm || existingForm.cruiseId !== param(req, "id")) {
+        return res.status(404).json({ error: "Form not found" });
+      }
+
       const form = await storage.updateCruiseForm(param(req, "formId"), parseResult.data);
       if (!form) {
         return res.status(404).json({ error: "Form not found" });
@@ -696,6 +705,12 @@ export async function registerRoutes(
 
   app.delete("/api/cruises/:id/forms/:formId", requireAuth, async (req, res) => {
     try {
+      // Verify the form belongs to the specified cruise
+      const existingForm = await storage.getCruiseForm(param(req, "formId"));
+      if (!existingForm || existingForm.cruiseId !== param(req, "id")) {
+        return res.status(404).json({ error: "Form not found" });
+      }
+
       await storage.deleteCruiseForm(param(req, "formId"));
       await audit(req, "cruise_form.delete", "cruise_form", param(req, "formId"));
       res.json({ success: true });

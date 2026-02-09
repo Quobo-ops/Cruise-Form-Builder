@@ -50,7 +50,8 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        const responseStr = JSON.stringify(capturedJsonResponse);
+        logLine += ` :: ${responseStr.length > 200 ? responseStr.substring(0, 200) + "..." : responseStr}`;
       }
 
       log(logLine);
@@ -99,4 +100,23 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
     },
   );
-})();
+
+  // Graceful shutdown
+  const shutdown = () => {
+    log("Shutting down gracefully...");
+    httpServer.close(() => {
+      log("HTTP server closed");
+      process.exit(0);
+    });
+    // Force exit after 10 seconds if connections don't close
+    setTimeout(() => {
+      log("Forcing shutdown after timeout");
+      process.exit(1);
+    }, 10_000).unref();
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+})().catch((err) => {
+  console.error("Fatal startup error:", err);
+  process.exit(1);
+});

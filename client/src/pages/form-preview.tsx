@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Ship, ArrowRight, ChevronLeft, Edit, Minus, Plus, DollarSign, Info, Anchor } from "lucide-react";
+import { Ship, ArrowLeft, ArrowRight, ChevronLeft, Edit, Minus, Plus, DollarSign, Info, Anchor } from "lucide-react";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { Template, Step, QuantityAnswer, Cruise, CruiseInventory } from "@shared/schema";

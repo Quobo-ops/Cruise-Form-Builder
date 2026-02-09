@@ -287,10 +287,14 @@ export default function CruiseDetail() {
     },
   });
 
-  const copyFormLink = (shareId: string) => {
+  const copyFormLink = async (shareId: string) => {
     const url = `${window.location.origin}/form/${shareId}`;
-    navigator.clipboard.writeText(url);
-    toast({ title: "Link copied", description: "The form link has been copied to your clipboard." });
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({ title: "Link copied", description: "The form link has been copied to your clipboard." });
+    } catch {
+      toast({ title: "Copy failed", description: "Could not copy to clipboard.", variant: "destructive" });
+    }
   };
 
   const handleSelectSubmission = (submission: Submission) => {
@@ -395,14 +399,22 @@ export default function CruiseDetail() {
     return null;
   }
 
-  const copyShareLink = () => {
+  const copyShareLink = async () => {
     if (!cruise) return;
     const url = `${window.location.origin}/form/${cruise.shareId}`;
-    navigator.clipboard.writeText(url);
-    toast({
-      title: "Link copied",
-      description: "The shareable link has been copied to your clipboard.",
-    });
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({
+        title: "Link copied",
+        description: "The shareable link has been copied to your clipboard.",
+      });
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Could not copy to clipboard.",
+        variant: "destructive",
+      });
+    }
   };
 
   const startEditing = () => {

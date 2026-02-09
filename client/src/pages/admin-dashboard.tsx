@@ -259,13 +259,21 @@ export default function AdminDashboard() {
     c.name.toLowerCase().includes(cruiseSearchTerm.toLowerCase())
   );
 
-  const copyCruiseLink = (shareId: string) => {
+  const copyCruiseLink = async (shareId: string) => {
     const url = `${window.location.origin}/form/${shareId}`;
-    navigator.clipboard.writeText(url);
-    toast({
-      title: "Link copied",
-      description: "The cruise form link has been copied to your clipboard.",
-    });
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({
+        title: "Link copied",
+        description: "The cruise form link has been copied to your clipboard.",
+      });
+    } catch {
+      toast({
+        title: "Copy failed",
+        description: "Could not copy to clipboard. Please copy the link manually.",
+        variant: "destructive",
+      });
+    }
   };
 
   const getTemplateName = (templateId: string) => {

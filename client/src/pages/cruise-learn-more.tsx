@@ -131,6 +131,7 @@ export default function CruiseLearnMore() {
                     <button
                       key={index}
                       onClick={() => setCurrentImageIndex(index)}
+                      aria-label={`Go to image ${index + 1}`}
                       className={`w-2 h-2 rounded-full transition-all ${
                         index === currentImageIndex 
                           ? "bg-white scale-125" 

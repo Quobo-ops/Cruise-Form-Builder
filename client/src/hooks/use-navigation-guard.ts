@@ -39,8 +39,11 @@ export function useNavigationGuard({
 
   // Intercept Wouter navigation
   // Override the pushState to intercept SPA navigation
+  const originalPushStateRef = useRef<typeof history.pushState | null>(null);
+
   useEffect(() => {
     const originalPushState = history.pushState.bind(history);
+    originalPushStateRef.current = originalPushState;
 
     const interceptNavigation = (url: string) => {
       if (hasUnsavedRef.current()) {
@@ -67,10 +70,14 @@ export function useNavigationGuard({
     setShowDialog(false);
     onConfirmLeave?.();
     if (pendingNavigationRef.current) {
-      // Temporarily disable guard, then navigate
       const url = pendingNavigationRef.current;
       pendingNavigationRef.current = null;
-      window.location.href = url;
+      // Use the original pushState to navigate without triggering the guard,
+      // then dispatch a popstate event so Wouter picks up the route change.
+      if (originalPushStateRef.current) {
+        originalPushStateRef.current({}, "", url);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }
     }
   }, [onConfirmLeave]);
 
