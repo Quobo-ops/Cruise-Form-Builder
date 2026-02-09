@@ -72,6 +72,7 @@ export interface IStorage {
   getSubmissionCountByCruise(cruiseId: string): Promise<number>;
   getUnviewedSubmissionCount(cruiseId: string): Promise<number>;
   markSubmissionsViewed(cruiseId: string): Promise<void>;
+  markSubmissionViewed(submissionId: string): Promise<Submission | undefined>;
   createSubmission(submission: InsertSubmission): Promise<Submission>;
 
   // Audit logs
@@ -444,6 +445,15 @@ export class DatabaseStorage implements IStorage {
       .update(submissions)
       .set({ isViewed: true })
       .where(eq(submissions.cruiseId, cruiseId));
+  }
+
+  async markSubmissionViewed(submissionId: string): Promise<Submission | undefined> {
+    const [result] = await db
+      .update(submissions)
+      .set({ isViewed: true })
+      .where(eq(submissions.id, submissionId))
+      .returning();
+    return result;
   }
 
   async createSubmission(submission: InsertSubmission): Promise<Submission> {

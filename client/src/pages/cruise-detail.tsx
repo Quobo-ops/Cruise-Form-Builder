@@ -34,8 +34,9 @@ import {
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  Ship, ArrowLeft, Copy, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Upload, Trash2, Info
+  Ship, Copy, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Upload, Trash2, Info, Eye
 } from "lucide-react";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -43,6 +44,8 @@ import type { Cruise, Template, CruiseInventory, Submission, QuantityAnswer } fr
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUpload } from "@/hooks/use-upload";
+import { useNavigationGuard } from "@/hooks/use-navigation-guard";
+import { UnsavedChangesDialog } from "@/components/unsaved-changes-dialog";
 
 type CruiseWithCounts = Cruise & {
   submissionCount: number;
@@ -112,6 +115,27 @@ export default function CruiseDetail() {
     enabled: !!id && isAuthenticated,
   });
 
+  // Navigation guard for unsaved Learn More changes
+  const { showDialog: showUnsavedDialog, confirmLeave, cancelLeave } = useNavigationGuard({
+    hasUnsavedChanges: () => hasUnsavedLearnMoreRef.current,
+    onConfirmLeave: () => {
+      // Fire off save before leaving (same as existing unmount logic)
+      if (hasUnsavedLearnMoreRef.current && id) {
+        fetch(`/api/cruises/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            learnMoreHeader: learnMoreHeaderRef.current || null,
+            learnMoreImages: learnMoreImagesRef.current.length > 0 ? learnMoreImagesRef.current : null,
+            learnMoreDescription: learnMoreDescriptionRef.current || null,
+          }),
+          credentials: "include",
+          keepalive: true,
+        });
+      }
+    },
+  });
+
   const updateCruiseMutation = useMutation({
     mutationFn: async (data: { name: string; description: string; isActive: boolean; isPublished: boolean }) => {
       return await apiRequest("PATCH", `/api/cruises/${id}`, data);
@@ -174,6 +198,40 @@ export default function CruiseDetail() {
       });
     },
   });
+
+  const markViewedMutation = useMutation({
+    mutationFn: async (submissionId: string) => {
+      return await apiRequest("PATCH", `/api/submissions/${submissionId}/viewed`);
+    },
+    onSuccess: () => {
+      // Invalidate to refresh badge counts
+      queryClient.invalidateQueries({ queryKey: ["/api/cruises", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cruises", id, "submissions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cruises"] });
+    },
+  });
+
+  const markAllViewedMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", `/api/cruises/${id}/submissions/mark-all-viewed`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cruises", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cruises", id, "submissions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cruises"] });
+      toast({
+        title: "All marked as read",
+        description: "All submissions have been marked as read.",
+      });
+    },
+  });
+
+  const handleSelectSubmission = (submission: Submission) => {
+    setSelectedSubmission(submission);
+    if (!submission.isViewed) {
+      markViewedMutation.mutate(submission.id);
+    }
+  };
 
   const initLearnMoreFromCruise = () => {
     if (cruise) {
@@ -360,22 +418,28 @@ export default function CruiseDetail() {
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
-            <Link href="/admin/cruises" className="flex items-center gap-2 text-muted-foreground hover-elevate rounded-md px-2 py-1">
-              <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Back</span>
-            </Link>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
-                <Ship className="w-5 h-5 text-primary-foreground" />
-              </div>
-              <span className="font-semibold text-lg">{cruise.name}</span>
+            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
+              <Ship className="w-5 h-5 text-primary-foreground" />
             </div>
+            <Breadcrumbs items={[
+              { label: "Cruises", href: "/admin/cruises" },
+              { label: cruise.name },
+            ]} />
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <ThemeToggle />
             <Button variant="outline" onClick={copyShareLink} className="gap-2" data-testid="button-copy-link">
               <Copy className="w-4 h-4" />
               <span className="hidden sm:inline">Copy Link</span>
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => setLocation(`/admin/preview/${cruise.templateId}?cruise=${cruise.id}`)} 
+              className="gap-2" 
+              data-testid="button-preview-form"
+            >
+              <Eye className="w-4 h-4" />
+              <span className="hidden sm:inline">Preview Form</span>
             </Button>
             <Button variant="outline" onClick={startEditing} className="gap-2" data-testid="button-edit-cruise">
               <Edit className="w-4 h-4" />
@@ -620,10 +684,27 @@ export default function CruiseDetail() {
           <TabsContent value="clients">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">Client Submissions</CardTitle>
-                <CardDescription>
-                  View all signups for this cruise.
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base">Client Submissions</CardTitle>
+                    <CardDescription>
+                      View all signups for this cruise.
+                    </CardDescription>
+                  </div>
+                  {submissions && submissions.some(s => !s.isViewed) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => markAllViewedMutation.mutate()}
+                      disabled={markAllViewedMutation.isPending}
+                    >
+                      {markAllViewedMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : null}
+                      Mark All as Read
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {submissions && submissions.length > 0 ? (
@@ -633,10 +714,15 @@ export default function CruiseDetail() {
                       {submissions.map((submission) => (
                         <div 
                           key={submission.id} 
-                          className="p-4 border rounded-md hover-elevate cursor-pointer"
-                          onClick={() => setSelectedSubmission(submission)}
+                          className={`p-4 border rounded-md hover-elevate cursor-pointer relative ${
+                            !submission.isViewed ? "border-primary/50 bg-primary/5" : ""
+                          }`}
+                          onClick={() => handleSelectSubmission(submission)}
                           data-testid={`card-submission-${submission.id}`}
                         >
+                          {!submission.isViewed && (
+                            <div className="w-2 h-2 rounded-full bg-primary absolute top-3 right-3" />
+                          )}
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-3 min-w-0">
                               <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -673,9 +759,14 @@ export default function CruiseDetail() {
                         </TableHeader>
                         <TableBody>
                           {submissions.map((submission) => (
-                            <TableRow key={submission.id}>
+                            <TableRow key={submission.id} className={!submission.isViewed ? "bg-primary/5" : ""}>
                               <TableCell className="font-medium">
-                                {submission.customerName || "Unknown"}
+                                <div className="flex items-center gap-2">
+                                  {!submission.isViewed && (
+                                    <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                                  )}
+                                  {submission.customerName || "Unknown"}
+                                </div>
                               </TableCell>
                               <TableCell>
                                 {submission.customerPhone || "N/A"}
@@ -687,7 +778,7 @@ export default function CruiseDetail() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => setSelectedSubmission(submission)}
+                                  onClick={() => handleSelectSubmission(submission)}
                                   data-testid={`button-view-submission-${submission.id}`}
                                 >
                                   View Details
@@ -973,6 +1064,13 @@ export default function CruiseDetail() {
           )}
         </SheetContent>
       </Sheet>
+
+      <UnsavedChangesDialog
+        open={showUnsavedDialog}
+        onConfirm={confirmLeave}
+        onCancel={cancelLeave}
+        description="Your Learn More content has unsaved changes. Click 'Save Learn More Content' to save, or leave without saving."
+      />
     </div>
   );
 }

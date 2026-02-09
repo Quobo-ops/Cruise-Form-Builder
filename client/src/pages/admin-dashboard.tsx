@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -34,7 +34,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { 
   Ship, Plus, MoreVertical, Edit, Copy, Trash2, Eye, 
-  ExternalLink, Search, ClipboardList, LogOut, Loader2, Anchor, Bell, Users
+  ExternalLink, Search, ClipboardList, LogOut, Loader2, Anchor, Bell, Users, X, ChevronRight
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -50,11 +50,35 @@ export default function AdminDashboard() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const { isLoading: authLoading, isAuthenticated } = useAuth();
-  const [searchTerm, setSearchTerm] = useState("");
+  
+  // Read initial search state from URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const [cruiseSearchTerm, setCruiseSearchTerm] = useState(urlParams.get("cq") || "");
+  const [templateSearchTerm, setTemplateSearchTerm] = useState(urlParams.get("tq") || "");
+  
   const [newTemplateName, setNewTemplateName] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null);
   const [deleteCruiseId, setDeleteCruiseId] = useState<string | null>(null);
+  
+  // Sync search term changes to URL (debounced)
+  const updateUrlRef = useRef<NodeJS.Timeout | null>(null);
+  
+  useEffect(() => {
+    if (updateUrlRef.current) clearTimeout(updateUrlRef.current);
+    updateUrlRef.current = setTimeout(() => {
+      const params = new URLSearchParams();
+      if (cruiseSearchTerm) {
+        params.set("cq", cruiseSearchTerm);
+      }
+      if (templateSearchTerm) {
+        params.set("tq", templateSearchTerm);
+      }
+      const query = params.toString();
+      const newUrl = `${window.location.pathname}${query ? `?${query}` : ""}`;
+      window.history.replaceState(null, "", newUrl);
+    }, 300);
+  }, [cruiseSearchTerm, templateSearchTerm]);
   
   // Cruise creation state
   const [isCreateCruiseDialogOpen, setIsCreateCruiseDialogOpen] = useState(false);
@@ -74,10 +98,18 @@ export default function AdminDashboard() {
     enabled: isAuthenticated,
   });
 
-  const { data: cruises, isLoading: cruisesLoading } = useQuery<CruiseWithCounts[]>({
+  const { data: cruisesResponse, isLoading: cruisesLoading } = useQuery<{
+    data: CruiseWithCounts[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }>({
     queryKey: ["/api/cruises"],
     enabled: isAuthenticated,
   });
+  
+  const cruises = cruisesResponse?.data || [];
 
   const createTemplateMutation = useMutation({
     mutationFn: async (name: string) => {
@@ -220,11 +252,11 @@ export default function AdminDashboard() {
   };
 
   const filteredTemplates = templates?.filter((t) =>
-    t.name.toLowerCase().includes(searchTerm.toLowerCase())
+    t.name.toLowerCase().includes(templateSearchTerm.toLowerCase())
   );
 
   const filteredCruises = cruises?.filter((c) =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase())
+    c.name.toLowerCase().includes(cruiseSearchTerm.toLowerCase())
   );
 
   const copyCruiseLink = (shareId: string) => {
@@ -430,11 +462,20 @@ export default function AdminDashboard() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Search cruises..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  value={cruiseSearchTerm}
+                  onChange={(e) => setCruiseSearchTerm(e.target.value)}
+                  className="pl-10 pr-8"
                   data-testid="input-search-cruises"
                 />
+                {cruiseSearchTerm && (
+                  <button
+                    onClick={() => setCruiseSearchTerm("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -455,7 +496,20 @@ export default function AdminDashboard() {
             ) : filteredCruises && filteredCruises.length > 0 ? (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredCruises.map((cruise) => (
-                  <Card key={cruise.id} className="hover-elevate cursor-pointer" onClick={() => setLocation(`/admin/cruises/${cruise.id}`)}>
+                  <Card
+                    key={cruise.id}
+                    className="hover-elevate cursor-pointer group focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                    onClick={() => setLocation(`/admin/cruises/${cruise.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setLocation(`/admin/cruises/${cruise.id}`);
+                      }
+                    }}
+                    tabIndex={0}
+                    role="link"
+                    aria-label={`Open cruise: ${cruise.name}`}
+                  >
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
@@ -473,26 +527,11 @@ export default function AdminDashboard() {
                         </div>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" data-testid={`button-cruise-menu-${cruise.id}`}>
+                            <Button variant="ghost" size="icon" className="sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" data-testid={`button-cruise-menu-${cruise.id}`}>
                               <MoreVertical className="w-4 h-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem 
-                              onClick={(e) => { e.stopPropagation(); setLocation(`/admin/cruises/${cruise.id}`); }}
-                              className="flex items-center gap-2"
-                            >
-                              <Eye className="w-4 h-4" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => { e.stopPropagation(); copyCruiseLink(cruise.shareId); }}
-                              className="flex items-center gap-2"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                              Copy Link
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={(e) => { e.stopPropagation(); setDeleteCruiseId(cruise.id); }}
                               className="flex items-center gap-2 text-destructive"
@@ -505,7 +544,7 @@ export default function AdminDashboard() {
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex items-center gap-4 flex-wrap text-sm text-muted-foreground">
+                      <div className="flex items-center gap-4 flex-wrap text-sm text-muted-foreground mb-3">
                         <div className="flex items-center gap-1">
                           <Users className="w-4 h-4" />
                           {cruise.submissionCount} signups
@@ -519,6 +558,23 @@ export default function AdminDashboard() {
                           <Badge variant="outline">Inactive</Badge>
                         )}
                       </div>
+                      {/* Inline quick actions */}
+                      <div className="flex items-center gap-2 pt-2 border-t" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs gap-1.5"
+                          onClick={() => copyCruiseLink(cruise.shareId)}
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Copy Link
+                        </Button>
+                        {cruise.startDate && (
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {new Date(cruise.startDate).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
@@ -530,14 +586,31 @@ export default function AdminDashboard() {
                     <Anchor className="w-8 h-8 text-muted-foreground" />
                   </div>
                   <h3 className="text-lg font-semibold text-foreground mb-2">No cruises yet</h3>
-                  <p className="text-muted-foreground text-center mb-4">
-                    {searchTerm ? "No cruises match your search." : "Create your first cruise to get started."}
-                  </p>
-                  {!searchTerm && (
-                    <Button onClick={() => setIsCreateCruiseDialogOpen(true)} className="gap-2">
-                      <Plus className="w-4 h-4" />
-                      Create Cruise
-                    </Button>
+                  {cruiseSearchTerm ? (
+                    <p className="text-muted-foreground text-center mb-4">No cruises match your search.</p>
+                  ) : templates && templates.length > 0 ? (
+                    <>
+                      <p className="text-muted-foreground text-center mb-4 max-w-md">
+                        Create your first cruise and link it to one of your form templates to start collecting signups.
+                      </p>
+                      <Button onClick={() => setIsCreateCruiseDialogOpen(true)} className="gap-2">
+                        <Plus className="w-4 h-4" />
+                        Create Cruise
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-muted-foreground text-center mb-4 max-w-md">
+                        To create a cruise, you first need a form template. Switch to the Templates tab to create one.
+                      </p>
+                      <div className="flex flex-col sm:flex-row items-center gap-3">
+                        <Button onClick={() => setLocation("/admin/templates")} className="gap-2">
+                          <ClipboardList className="w-4 h-4" />
+                          Go to Templates
+                        </Button>
+                        <span className="text-xs text-muted-foreground">Step 1 of 2</span>
+                      </div>
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -597,11 +670,20 @@ export default function AdminDashboard() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Search templates..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  value={templateSearchTerm}
+                  onChange={(e) => setTemplateSearchTerm(e.target.value)}
+                  className="pl-10 pr-8"
                   data-testid="input-search"
                 />
+                {templateSearchTerm && (
+                  <button
+                    onClick={() => setTemplateSearchTerm("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -622,7 +704,20 @@ export default function AdminDashboard() {
             ) : filteredTemplates && filteredTemplates.length > 0 ? (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredTemplates.map((template) => (
-                  <Card key={template.id} className="hover-elevate">
+                  <Card
+                    key={template.id}
+                    className="hover-elevate cursor-pointer group focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                    onClick={() => setLocation(`/admin/builder/${template.id}?from=templates`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setLocation(`/admin/builder/${template.id}?from=templates`);
+                      }
+                    }}
+                    tabIndex={0}
+                    role="link"
+                    aria-label={`Edit template: ${template.name}`}
+                  >
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
@@ -632,26 +727,14 @@ export default function AdminDashboard() {
                           </CardDescription>
                         </div>
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" data-testid={`button-menu-${template.id}`}>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" data-testid={`button-menu-${template.id}`}>
                               <MoreVertical className="w-4 h-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild>
-                              <Link href={`/admin/builder/${template.id}`} className="flex items-center gap-2">
-                                <Edit className="w-4 h-4" />
-                                Edit
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href={`/admin/preview/${template.id}`} className="flex items-center gap-2">
-                                <Eye className="w-4 h-4" />
-                                Preview
-                              </Link>
-                            </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => duplicateMutation.mutate(template.id)}
+                              onClick={(e) => { e.stopPropagation(); duplicateMutation.mutate(template.id); }}
                               className="flex items-center gap-2"
                             >
                               <Copy className="w-4 h-4" />
@@ -659,7 +742,7 @@ export default function AdminDashboard() {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onClick={() => setDeleteTemplateId(template.id)}
+                              onClick={(e) => { e.stopPropagation(); setDeleteTemplateId(template.id); }}
                               className="flex items-center gap-2 text-destructive"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -670,10 +753,31 @@ export default function AdminDashboard() {
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 mb-3">
                         <Badge variant="secondary">
                           {template.cruiseCount || 0} {template.cruiseCount === 1 ? 'cruise' : 'cruises'}
                         </Badge>
+                      </div>
+                      {/* Inline quick actions */}
+                      <div className="flex items-center gap-2 pt-2 border-t" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs gap-1.5"
+                          onClick={() => setLocation(`/admin/builder/${template.id}?from=templates`)}
+                        >
+                          <Edit className="w-3 h-3" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs gap-1.5"
+                          onClick={() => setLocation(`/admin/preview/${template.id}`)}
+                        >
+                          <Eye className="w-3 h-3" />
+                          Preview
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -686,14 +790,36 @@ export default function AdminDashboard() {
                     <ClipboardList className="w-8 h-8 text-muted-foreground" />
                   </div>
                   <h3 className="text-lg font-semibold text-foreground mb-2">No templates yet</h3>
-                  <p className="text-muted-foreground text-center mb-4">
-                    {searchTerm ? "No templates match your search." : "Create your first booking form to get started."}
-                  </p>
-                  {!searchTerm && (
-                    <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
-                      <Plus className="w-4 h-4" />
-                      Create Template
-                    </Button>
+                  {templateSearchTerm ? (
+                    <p className="text-muted-foreground text-center mb-4">No templates match your search.</p>
+                  ) : (
+                    <>
+                      <p className="text-muted-foreground text-center mb-6 max-w-md">
+                        Templates are the booking forms your customers fill out. Create a template, then attach it to a cruise to start collecting signups.
+                      </p>
+                      <div className="flex flex-col items-center gap-4">
+                        <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
+                          <Plus className="w-4 h-4" />
+                          Create Your First Template
+                        </Button>
+                        <div className="flex items-center gap-6 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-[10px] font-bold">1</div>
+                            Create template
+                          </div>
+                          <ChevronRight className="w-3 h-3" />
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-5 h-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-[10px] font-bold">2</div>
+                            Create cruise
+                          </div>
+                          <ChevronRight className="w-3 h-3" />
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-5 h-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-[10px] font-bold">3</div>
+                            Share link
+                          </div>
+                        </div>
+                      </div>
+                    </>
                   )}
                 </CardContent>
               </Card>

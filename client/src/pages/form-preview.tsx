@@ -8,9 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Ship, ArrowLeft, ArrowRight, ChevronLeft, Edit, Minus, Plus, DollarSign, Info } from "lucide-react";
+import { Ship, ArrowRight, ChevronLeft, Edit, Minus, Plus, DollarSign, Info, Anchor } from "lucide-react";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import { ThemeToggle } from "@/components/theme-toggle";
-import type { Template, Step, QuantityAnswer } from "@shared/schema";
+import type { Template, Step, QuantityAnswer, Cruise, CruiseInventory } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StepInfoPopup } from "@/components/step-info-popup";
 
@@ -18,6 +19,10 @@ export default function FormPreview() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const { isLoading: authLoading, isAuthenticated } = useAuth();
+  
+  // Get cruise ID from query params if present
+  const urlParams = new URLSearchParams(window.location.search);
+  const cruiseId = urlParams.get("cruise");
   
   const [currentStepId, setCurrentStepId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string | QuantityAnswer[]>>({});
@@ -44,6 +49,17 @@ export default function FormPreview() {
   const { data: template, isLoading } = useQuery<Template>({
     queryKey: ["/api/templates", id],
     enabled: isAuthenticated,
+  });
+
+  // Fetch cruise data if previewing with cruise context
+  const { data: cruise } = useQuery<Cruise>({
+    queryKey: ["/api/cruises", cruiseId],
+    enabled: !!cruiseId && isAuthenticated,
+  });
+
+  const { data: inventory } = useQuery<CruiseInventory[]>({
+    queryKey: ["/api/cruises", cruiseId, "inventory"],
+    enabled: !!cruiseId && isAuthenticated,
   });
 
   const graph = template?.graph;
@@ -96,6 +112,12 @@ export default function FormPreview() {
     const stepId = currentStepId || graph?.rootStepId;
     return orderedSteps.findIndex(s => s.id === stepId);
   }, [orderedSteps, currentStepId, graph?.rootStepId]);
+
+  // Helper to get inventory info for a choice (when in cruise context)
+  const getInventoryForChoice = useCallback((stepId: string, choiceId: string) => {
+    if (!inventory) return null;
+    return inventory.find(i => i.stepId === stepId && i.choiceId === choiceId);
+  }, [inventory]);
 
   const handlePreviewNavigate = (direction: 'prev' | 'next') => {
     if (orderedSteps.length === 0) return;
@@ -336,18 +358,41 @@ export default function FormPreview() {
       <div ref={liveRegionRef} className="sr-only" aria-live="polite" aria-atomic="true" role="status" />
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <Link href={`/admin/builder/${id}`} className="flex items-center gap-2 text-muted-foreground hover-elevate rounded-md px-2 py-1" aria-label="Back to form editor">
-            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
-            <span className="hidden sm:inline">Back to Editor</span>
-          </Link>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
+              <Ship className="w-5 h-5 text-primary-foreground" />
+            </div>
+            {cruiseId && cruise ? (
+              <Breadcrumbs items={[
+                { label: "Cruises", href: "/admin/cruises" },
+                { label: cruise.name, href: `/admin/cruises/${cruiseId}` },
+                { label: "Preview" },
+              ]} />
+            ) : (
+              <Breadcrumbs items={[
+                { label: "Templates", href: "/admin/templates" },
+                { label: template?.name || "Template", href: `/admin/builder/${id}` },
+                { label: "Preview" },
+              ]} />
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <Link href={`/admin/builder/${id}`}>
-              <Button variant="outline" size="sm" className="gap-2">
-                <Edit className="w-4 h-4" />
-                Edit
-              </Button>
-            </Link>
+            {cruiseId ? (
+              <Link href={`/admin/cruises/${cruiseId}`}>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Anchor className="w-4 h-4" />
+                  Back to Cruise
+                </Button>
+              </Link>
+            ) : (
+              <Link href={`/admin/builder/${id}`}>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Edit className="w-4 h-4" />
+                  Edit
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </header>
@@ -358,8 +403,21 @@ export default function FormPreview() {
             <div className="w-12 h-12 rounded-md bg-primary flex items-center justify-center mx-auto mb-3">
               <Ship className="w-7 h-7 text-primary-foreground" />
             </div>
-            <h1 className="text-xl font-bold text-foreground">{template?.name}</h1>
-            <p className="text-sm text-muted-foreground mt-1">Preview Mode</p>
+            <h1 className="text-xl font-bold text-foreground">
+              {cruiseId && cruise ? cruise.name : template?.name}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {cruiseId && cruise ? (
+                <>Preview Mode &middot; {template?.name}</>
+              ) : (
+                "Preview Mode"
+              )}
+            </p>
+            {cruise?.startDate && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {new Date(cruise.startDate).toLocaleDateString()} - {cruise.endDate ? new Date(cruise.endDate).toLocaleDateString() : "TBD"}
+              </p>
+            )}
           </div>
 
           <Progress value={progress} className="mb-4" />
@@ -539,6 +597,11 @@ export default function FormPreview() {
                     <div className="space-y-3" role="group" aria-label="Select quantities">
                       {currentStep.quantityChoices?.map((choice) => {
                         const currentQty = quantitySelections[choice.id] || 0;
+                        const inventoryItem = getInventoryForChoice(currentStep.id, choice.id);
+                        const remaining = inventoryItem?.stockLimit !== null && inventoryItem?.stockLimit !== undefined
+                          ? Math.max(0, inventoryItem.stockLimit - inventoryItem.totalOrdered)
+                          : null;
+                        const isSoldOut = remaining !== null && remaining <= 0;
 
                         if (choice.isNoThanks) {
                           return (
@@ -556,7 +619,7 @@ export default function FormPreview() {
                         }
 
                         return (
-                          <div key={choice.id} className="p-4 border rounded-md" role="group" aria-label={`${choice.label}, $${(choice.price || 0).toFixed(2)} each`}>
+                          <div key={choice.id} className={`p-4 border rounded-md ${isSoldOut ? 'opacity-60' : ''}`} role="group" aria-label={`${choice.label}, $${(choice.price || 0).toFixed(2)} each`}>
                             <div className="flex items-center justify-between gap-2 mb-2">
                               <div className="flex-1">
                                 <p className="font-medium">{choice.label}</p>
@@ -565,16 +628,24 @@ export default function FormPreview() {
                                   ${(choice.price || 0).toFixed(2)} each
                                 </div>
                               </div>
-                              {choice.limit && (
-                                <Badge variant="outline" aria-label={`Maximum ${choice.limit}`}>{choice.limit} max</Badge>
-                              )}
+                              <div className="flex items-center gap-2">
+                                {/* Show cruise inventory info when available */}
+                                {cruiseId && remaining !== null && (
+                                  <Badge variant={isSoldOut ? "destructive" : "outline"} aria-label={isSoldOut ? "Sold out" : `${remaining} remaining`}>
+                                    {isSoldOut ? "Sold Out" : `${remaining} left`}
+                                  </Badge>
+                                )}
+                                {!cruiseId && choice.limit && (
+                                  <Badge variant="outline" aria-label={`Maximum ${choice.limit}`}>{choice.limit} max</Badge>
+                                )}
+                              </div>
                             </div>
                             <div className="flex items-center justify-center gap-4">
                               <Button
                                 variant="outline"
                                 size="icon"
                                 onClick={() => handleQuantityChange(choice.id, -1)}
-                                disabled={currentQty === 0}
+                                disabled={currentQty === 0 || isSoldOut}
                                 aria-label={`Decrease quantity for ${choice.label}`}
                                 data-testid={`button-minus-${choice.id}`}
                               >
@@ -587,7 +658,7 @@ export default function FormPreview() {
                                 variant="outline"
                                 size="icon"
                                 onClick={() => handleQuantityChange(choice.id, 1)}
-                                disabled={choice.limit ? currentQty >= choice.limit : false}
+                                disabled={isSoldOut || (remaining !== null ? currentQty >= remaining : (choice.limit ? currentQty >= choice.limit : false))}
                                 aria-label={`Increase quantity for ${choice.label}`}
                                 data-testid={`button-plus-${choice.id}`}
                               >

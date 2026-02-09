@@ -629,11 +629,35 @@ export async function registerRoutes(
       const search = (req.query.search as string) || undefined;
 
       const result = await storage.getSubmissionsByCruisePaginated(param(req, "id"), { page, limit, search });
-      // Mark as viewed
-      await storage.markSubmissionsViewed(param(req, "id"));
+      // Don't auto-mark all as viewed; let client mark individually
       res.json(result);
     } catch (error) {
       console.error("Get cruise submissions error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Mark a single submission as viewed
+  app.patch("/api/submissions/:id/viewed", requireAuth, async (req, res) => {
+    try {
+      const submission = await storage.markSubmissionViewed(param(req, "id"));
+      if (!submission) {
+        return res.status(404).json({ error: "Submission not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Mark submission viewed error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Mark all submissions as viewed for a cruise
+  app.post("/api/cruises/:id/submissions/mark-all-viewed", requireAuth, async (req, res) => {
+    try {
+      await storage.markSubmissionsViewed(param(req, "id"));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Mark all submissions viewed error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -760,6 +784,28 @@ export async function registerRoutes(
       res.json(template);
     } catch (error) {
       console.error("Get form error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Lightweight inventory check for active form sessions
+  app.get("/api/forms/:shareId/inventory", async (req, res) => {
+    try {
+      const cruise = await storage.getCruiseByShareId(param(req, "shareId"));
+      if (!cruise || !cruise.isPublished || !cruise.isActive) {
+        return res.status(404).json({ error: "Form not found" });
+      }
+      const inventory = await storage.getCruiseInventory(cruise.id);
+      res.json({
+        inventory: inventory.map(item => ({
+          stepId: item.stepId,
+          choiceId: item.choiceId,
+          remaining: item.stockLimit ? Math.max(0, item.stockLimit - item.totalOrdered) : null,
+          isSoldOut: item.stockLimit ? item.totalOrdered >= item.stockLimit : false,
+        }))
+      });
+    } catch (error) {
+      console.error("Get form inventory error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });

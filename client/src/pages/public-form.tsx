@@ -122,7 +122,17 @@ export default function PublicForm() {
 
   const template = formData;
   const cruise = formData?.cruise;
-  const inventory = formData?.inventory || [];
+  
+  // Local inventory state that can be refreshed
+  const [localInventory, setLocalInventory] = useState<InventoryStatus[]>([]);
+  const inventory = localInventory.length > 0 ? localInventory : (formData?.inventory || []);
+  
+  // Initialize local inventory from form data
+  useEffect(() => {
+    if (formData?.inventory && localInventory.length === 0) {
+      setLocalInventory(formData.inventory);
+    }
+  }, [formData?.inventory, localInventory.length]);
 
   // --- Screen reader announcements ---
 
@@ -184,11 +194,12 @@ export default function PublicForm() {
     };
   }, [formId, draftChecked, pendingDraft, isSubmitted, answers, history, currentStepId, customerName, customerPhone, quantitySelections, showPhoneInput, inputValue]);
 
-  // Save draft immediately on beforeunload
+  // Save draft and warn on beforeunload
   useEffect(() => {
     if (!formId || isSubmitted) return;
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (Object.keys(answers).length > 0 || customerPhone) {
+        // Save draft before showing warning
         saveDraft(formId, {
           answers,
           history,
@@ -199,6 +210,10 @@ export default function PublicForm() {
           showPhoneInput,
           inputValue,
         });
+        // Show browser warning
+        e.preventDefault();
+        e.returnValue = "Your form progress has been saved as a draft. Are you sure you want to leave?";
+        return e.returnValue;
       }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -269,6 +284,54 @@ export default function PublicForm() {
     const item = inventory.find(i => i.stepId === stepId && i.choiceId === choiceId);
     return item?.isSoldOut ?? false;
   };
+
+  // Refresh inventory from server (lightweight endpoint)
+  const refreshInventory = useCallback(async () => {
+    if (!formId || !cruise) return;
+    try {
+      const response = await fetch(`/api/forms/${formId}/inventory`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.inventory) {
+          const freshInventory: InventoryStatus[] = data.inventory;
+          
+          // Check if any current selections exceed new stock
+          let needsAdjustment = false;
+          const adjustedSelections = { ...quantitySelections };
+          
+          for (const [choiceId, qty] of Object.entries(quantitySelections)) {
+            const inv = freshInventory.find(i => i.stepId === currentStepId && i.choiceId === choiceId);
+            if (inv?.remaining !== null && inv?.remaining !== undefined && qty > inv.remaining) {
+              adjustedSelections[choiceId] = Math.max(0, inv.remaining);
+              needsAdjustment = true;
+            }
+          }
+          
+          if (needsAdjustment) {
+            setQuantitySelections(adjustedSelections);
+            toast({
+              title: "Stock updated",
+              description: "Some quantities were adjusted due to stock changes.",
+              variant: "destructive",
+            });
+          }
+          
+          setLocalInventory(freshInventory);
+        }
+      }
+    } catch {
+      // Silent fail - don't disrupt form filling
+    }
+  }, [formId, cruise, quantitySelections, currentStepId, toast]);
+
+  // Refresh inventory when entering a quantity step
+  useEffect(() => {
+    if (!graph || !currentStepId) return;
+    const currentStepType = graph.steps[currentStepId]?.type;
+    if (currentStepType === "quantity") {
+      refreshInventory();
+    }
+  }, [currentStepId, graph, refreshInventory]);
 
   const checkStockIssues = useCallback((freshInventory: InventoryStatus[]): string[] => {
     const issues: string[] = [];

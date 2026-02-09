@@ -15,20 +15,34 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  Ship, ArrowLeft, Eye, 
+  Ship, Eye, 
   Loader2, Share2, GitBranch, Undo2, Redo2, Check, Cloud
 } from "lucide-react";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Template, FormGraph } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DecisionTreeEditor } from "@/components/decision-tree-editor";
+import { useNavigationGuard } from "@/hooks/use-navigation-guard";
+import { UnsavedChangesDialog } from "@/components/unsaved-changes-dialog";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 
 export default function FormBuilder() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { isLoading: authLoading, isAuthenticated } = useAuth();
+  
+  // Read the `from` query parameter for context-aware back navigation
+  const searchParams = new URLSearchParams(window.location.search);
+  const fromParam = searchParams.get("from");
+  
+  const backHref = fromParam === "templates"
+    ? "/admin/templates"
+    : fromParam?.startsWith("cruise-")
+      ? `/admin/cruises/${fromParam.replace("cruise-", "")}`
+      : "/admin/templates"; // Default to templates since forms ARE templates
   
   const [graph, setGraph] = useState<FormGraph | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
@@ -49,6 +63,25 @@ export default function FormBuilder() {
   const { data: template, isLoading } = useQuery<Template>({
     queryKey: ["/api/templates", id],
     enabled: isAuthenticated,
+  });
+
+  // Navigation guard for unsaved changes
+  const { showDialog: showUnsavedDialog, confirmLeave, cancelLeave } = useNavigationGuard({
+    hasUnsavedChanges: () => pendingChangesRef.current,
+    onConfirmLeave: () => {
+      // Fire off save before leaving
+      const currentGraph = graphRef.current;
+      const currentName = templateNameRef.current;
+      if (currentGraph && currentName && pendingChangesRef.current) {
+        fetch(`/api/templates/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: currentName, graph: currentGraph }),
+          credentials: "include",
+          keepalive: true,
+        });
+      }
+    },
   });
 
   useEffect(() => {
@@ -155,6 +188,42 @@ export default function FormBuilder() {
     setAutoSaveStatus("saving");
     saveMutation.mutate({ name: templateName, graph });
   }, [graph, templateName, saveMutation]);
+
+  // Keyboard shortcuts for form builder
+  useKeyboardShortcuts([
+    {
+      key: "z",
+      ctrl: true,
+      handler: handleUndo,
+      description: "Undo",
+    },
+    {
+      key: "z",
+      ctrl: true,
+      shift: true,
+      handler: handleRedo,
+      description: "Redo",
+    },
+    {
+      key: "y",
+      ctrl: true,
+      handler: handleRedo,
+      description: "Redo (alt)",
+    },
+    {
+      key: "s",
+      ctrl: true,
+      handler: performAutoSave,
+      description: "Force save",
+    },
+    {
+      key: "p",
+      ctrl: true,
+      shift: true,
+      handler: () => setLocation(`/admin/preview/${id}`),
+      description: "Preview form",
+    },
+  ]);
 
   useEffect(() => {
     if (!isInitialized.current || !graph) return;
@@ -340,21 +409,27 @@ export default function FormBuilder() {
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50 flex-shrink-0">
         <div className="px-4 py-4 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
-            <Link href="/admin/dashboard" className="flex items-center gap-2 text-muted-foreground hover-elevate rounded-md px-2 py-1">
-              <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Back</span>
-            </Link>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
-                <Ship className="w-5 h-5 text-primary-foreground" />
-              </div>
-              <Input
-                value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-                className="font-semibold border-transparent bg-transparent focus:bg-background w-48 sm:w-64"
-                data-testid="input-template-name"
-              />
+            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
+              <Ship className="w-5 h-5 text-primary-foreground" />
             </div>
+            <Breadcrumbs items={
+              fromParam?.startsWith("cruise-")
+                ? [
+                    { label: "Cruises", href: "/admin/cruises" },
+                    { label: "Cruise", href: `/admin/cruises/${fromParam.replace("cruise-", "")}` },
+                    { label: templateName || "Untitled" },
+                  ]
+                : [
+                    { label: "Templates", href: backHref },
+                    { label: templateName || "Untitled" },
+                  ]
+            } />
+            <Input
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              className="font-semibold border-transparent bg-transparent focus:bg-background w-48 sm:w-64 ml-2"
+              data-testid="input-template-name"
+            />
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1 mr-2 border-r pr-3">
@@ -363,7 +438,7 @@ export default function FormBuilder() {
                 size="icon"
                 onClick={handleUndo}
                 disabled={!canUndo}
-                title="Undo (go back)"
+                title="Undo (Ctrl+Z)"
                 data-testid="button-undo"
               >
                 <Undo2 className="w-4 h-4" />
@@ -373,7 +448,7 @@ export default function FormBuilder() {
                 size="icon"
                 onClick={handleRedo}
                 disabled={!canRedo}
-                title="Redo (go forward)"
+                title="Redo (Ctrl+Shift+Z)"
                 data-testid="button-redo"
               >
                 <Redo2 className="w-4 h-4" />
@@ -486,6 +561,13 @@ export default function FormBuilder() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <UnsavedChangesDialog
+        open={showUnsavedDialog}
+        onConfirm={confirmLeave}
+        onCancel={cancelLeave}
+        description="Your form has unsaved changes. They will be auto-saved, but you may want to wait for the save to complete."
+      />
     </div>
   );
 }
