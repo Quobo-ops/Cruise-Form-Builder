@@ -5,12 +5,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Ship, Anchor, Calendar, ArrowRight, Compass, Waves, Info } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Cruise } from "@shared/schema";
+import type { Cruise, CruiseForm } from "@shared/schema";
+
+type CruiseWithForms = Cruise & { forms?: CruiseForm[] };
 
 export default function Landing() {
   const [, setLocation] = useLocation();
 
-  const { data: cruises, isLoading } = useQuery<Cruise[]>({
+  const { data: cruises, isLoading } = useQuery<CruiseWithForms[]>({
     queryKey: ["/api/public/cruises"],
   });
 
@@ -107,14 +109,41 @@ export default function Landing() {
                     )}
                   </CardHeader>
                   <CardContent className="pt-0 space-y-2">
-                    <Button
-                      className="w-full gap-2 h-11 text-base font-medium shadow-sm hover:shadow-md transition-all duration-200"
-                      onClick={() => setLocation(`/form/${cruise.shareId}`)}
-                      data-testid={`button-book-${cruise.id}`}
-                    >
-                      Book Now
-                      <ArrowRight className="w-4 h-4" />
-                    </Button>
+                    {cruise.forms && cruise.forms.length > 1 ? (
+                      // Multiple forms: show one button per active form
+                      cruise.forms.map((form, idx) => (
+                        <Button
+                          key={form.id}
+                          className={`w-full gap-2 h-11 text-base font-medium shadow-sm hover:shadow-md transition-all duration-200 ${idx > 0 ? "" : ""}`}
+                          variant={idx === 0 ? "default" : "outline"}
+                          onClick={() => setLocation(`/form/${form.shareId}`)}
+                          data-testid={`button-form-${form.id}`}
+                        >
+                          {form.label}
+                          <ArrowRight className="w-4 h-4" />
+                        </Button>
+                      ))
+                    ) : cruise.forms && cruise.forms.length === 1 ? (
+                      // Single form: use form's shareId
+                      <Button
+                        className="w-full gap-2 h-11 text-base font-medium shadow-sm hover:shadow-md transition-all duration-200"
+                        onClick={() => setLocation(`/form/${cruise.forms![0].shareId}`)}
+                        data-testid={`button-book-${cruise.id}`}
+                      >
+                        {cruise.forms[0].label || "Book Now"}
+                        <ArrowRight className="w-4 h-4" />
+                      </Button>
+                    ) : (
+                      // No forms: fall back to cruise shareId
+                      <Button
+                        className="w-full gap-2 h-11 text-base font-medium shadow-sm hover:shadow-md transition-all duration-200"
+                        onClick={() => setLocation(`/form/${cruise.shareId}`)}
+                        data-testid={`button-book-${cruise.id}`}
+                      >
+                        Book Now
+                        <ArrowRight className="w-4 h-4" />
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       className="w-full gap-2 h-11 text-base font-medium"

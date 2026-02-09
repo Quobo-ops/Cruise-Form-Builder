@@ -1,5 +1,7 @@
 # 12: Quick Inline Actions on Cards
 
+> **Status: Implemented**
+
 ## Issue
 
 Currently, actions on cruise and template cards require opening a dropdown menu (3-dot button). This adds an extra click for every action. Common actions like "Copy Link", "Preview", and status indicators should be visible directly on the card surface.

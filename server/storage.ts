@@ -3,10 +3,11 @@ import {
   type Template, type InsertTemplate,
   type Submission, type InsertSubmission,
   type Cruise, type InsertCruise,
+  type CruiseForm, type InsertCruiseForm,
   type CruiseInventory, type InsertCruiseInventory,
   type AuditLog, type InsertAuditLog,
   type NotificationSettings,
-  users, templates, submissions, cruises, cruiseInventory,
+  users, templates, submissions, cruises, cruiseForms, cruiseInventory,
   auditLogs, notificationSettings,
   type QuantityAnswer
 } from "@shared/schema";
@@ -51,6 +52,14 @@ export interface IStorage {
   createCruise(cruise: InsertCruise): Promise<Cruise>;
   updateCruise(id: string, updates: Partial<InsertCruise>): Promise<Cruise | undefined>;
   deleteCruise(id: string): Promise<boolean>;
+
+  // Cruise Forms
+  getCruiseForms(cruiseId: string): Promise<CruiseForm[]>;
+  getCruiseFormByShareId(shareId: string): Promise<CruiseForm | undefined>;
+  createCruiseForm(data: InsertCruiseForm): Promise<CruiseForm>;
+  updateCruiseForm(id: string, data: Partial<InsertCruiseForm>): Promise<CruiseForm | undefined>;
+  deleteCruiseForm(id: string): Promise<void>;
+  reorderCruiseForms(cruiseId: string, orderedIds: string[]): Promise<void>;
 
   // Cruise Inventory
   getCruiseInventory(cruiseId: string): Promise<CruiseInventory[]>;
@@ -258,6 +267,46 @@ export class DatabaseStorage implements IStorage {
       .set({ deletedAt: new Date(), updatedAt: new Date(), isActive: false, isPublished: false })
       .where(eq(cruises.id, id));
     return true;
+  }
+
+  // Cruise Forms
+  async getCruiseForms(cruiseId: string): Promise<CruiseForm[]> {
+    return await db.select().from(cruiseForms)
+      .where(eq(cruiseForms.cruiseId, cruiseId))
+      .orderBy(cruiseForms.sortOrder);
+  }
+
+  async getCruiseFormByShareId(shareId: string): Promise<CruiseForm | undefined> {
+    const [form] = await db.select().from(cruiseForms)
+      .where(eq(cruiseForms.shareId, shareId));
+    return form;
+  }
+
+  async createCruiseForm(data: InsertCruiseForm): Promise<CruiseForm> {
+    const [created] = await db.insert(cruiseForms).values(data).returning();
+    return created;
+  }
+
+  async updateCruiseForm(id: string, data: Partial<InsertCruiseForm>): Promise<CruiseForm | undefined> {
+    const [updated] = await db.update(cruiseForms)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(cruiseForms.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCruiseForm(id: string): Promise<void> {
+    await db.delete(cruiseForms).where(eq(cruiseForms.id, id));
+  }
+
+  async reorderCruiseForms(cruiseId: string, orderedIds: string[]): Promise<void> {
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx.update(cruiseForms)
+          .set({ sortOrder: i, updatedAt: new Date() })
+          .where(and(eq(cruiseForms.id, orderedIds[i]), eq(cruiseForms.cruiseId, cruiseId)));
+      }
+    });
   }
 
   // Cruise Inventory

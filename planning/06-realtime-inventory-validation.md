@@ -1,5 +1,7 @@
 # 06: Real-Time Inventory Validation During Form Filling
 
+> **Status: Implemented**
+
 ## Issue
 
 Currently, inventory/stock availability is only validated AFTER the user completes the entire form. The validation happens at two late points in the public form flow:

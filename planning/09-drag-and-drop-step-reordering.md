@@ -1,5 +1,7 @@
 # 09: Drag-and-Drop Form Step Reordering
 
+> **Status: Implemented**
+
 ## Issue
 
 The form builder (`decision-tree-editor.tsx`, 46KB) displays form steps in a tree structure, but there is no way to reorder steps via drag and drop. To move a step, users must delete it and re-create it in the desired position. For complex forms with many steps, this is tedious and error-prone.

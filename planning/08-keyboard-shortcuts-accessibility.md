@@ -1,5 +1,7 @@
 # 08: Keyboard Shortcuts and Accessibility
 
+> **Status: Implemented**
+
 ## Issue
 
 The application lacks keyboard shortcuts for common actions. Power users must use the mouse for everything. The form builder is particularly affected -- undo/redo requires clicking small buttons (`form-builder.tsx:361-380`), and there's no way to save, preview, or navigate using the keyboard.

@@ -1,10 +1,16 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef, Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Popover,
   PopoverContent,
@@ -25,11 +31,30 @@ import {
   AlertTriangle,
   Info,
   ImagePlus,
+  Lock,
 } from "lucide-react";
 import type { FormGraph, Step, QuantityChoice, InfoPopup } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { StepInfoPopup } from "@/components/step-info-popup";
 import { Eye } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  DragOverlay,
+  type DragStartEvent,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface DecisionTreeEditorProps {
   graph: FormGraph;
@@ -232,6 +257,10 @@ interface TreeNodeProps {
   isRoot?: boolean;
   depth?: number;
   visitedSteps?: Set<string>;
+  /** When false, only renders the step card without recursively rendering children */
+  renderChildren?: boolean;
+  /** Listeners from useSortable to attach to a drag handle */
+  dragHandleListeners?: Record<string, Function> | undefined;
 }
 
 function TreeNode({
@@ -247,6 +276,8 @@ function TreeNode({
   isRoot = false,
   depth = 0,
   visitedSteps = new Set(),
+  renderChildren = true,
+  dragHandleListeners,
 }: TreeNodeProps) {
   const step = graph.steps[stepId];
   const [isEditing, setIsEditing] = useState(false);
@@ -383,6 +414,16 @@ function TreeNode({
         data-testid={`tree-node-${stepId}`}
       >
         <div className="flex items-start gap-2">
+          {dragHandleListeners && (
+            <div
+              {...dragHandleListeners}
+              className="flex-shrink-0 mt-0.5 cursor-grab active:cursor-grabbing hover:text-primary transition-colors"
+              onClick={(e) => e.stopPropagation()}
+              title="Drag to reorder"
+            >
+              <GripVertical className="w-4 h-4 text-muted-foreground" />
+            </div>
+          )}
           <div className="flex-shrink-0 mt-0.5 opacity-60">
             {getTypeIcon()}
           </div>
@@ -813,134 +854,671 @@ function TreeNode({
         )}
       </div>
 
-      {step.type === "choice" && step.choices && step.choices.length > 0 ? (
-        <div className="flex flex-col items-center mt-2">
-          <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
-          <div className="flex items-start gap-4">
-            {(() => {
-              const renderedStepsInBranches = new Set<string>();
-              return step.choices!.map((choice, index) => {
-                const hasNextStep = choice.nextStepId && graph.steps[choice.nextStepId];
-                const isAlreadyRendered = choice.nextStepId && renderedStepsInBranches.has(choice.nextStepId);
-                
-                if (hasNextStep && choice.nextStepId) {
-                  renderedStepsInBranches.add(choice.nextStepId);
-                }
-                
-                return (
-                  <div key={choice.id} className="flex flex-col items-center relative">
-                    {index === 0 && step.choices!.length > 1 && (
-                      <div 
-                        className="absolute top-0 left-1/2 h-px bg-gray-400 dark:bg-gray-500" 
-                        style={{ 
-                          width: `calc(${(step.choices!.length - 1) * 100}% + ${(step.choices!.length - 1) * 16}px)`,
-                        }}
-                      />
-                    )}
-                    
-                    {step.choices!.length > 1 && (
-                      <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
-                    )}
-                    
-                    <svg 
-                      width="10" 
-                      height="8" 
-                      viewBox="0 0 10 8" 
-                      className="text-gray-400 dark:text-gray-500 fill-current"
-                    >
-                      <polygon points="5,8 0,0 10,0" />
-                    </svg>
-
-                    <div className="mt-1 px-2 py-0.5 text-[10px] bg-muted rounded text-muted-foreground max-w-[120px] truncate">
-                      {choice.label}
-                    </div>
-                    
-                    {hasNextStep ? (
-                      isAlreadyRendered ? (
-                        <div className="flex flex-col items-center mt-2">
-                          <Badge variant="outline" className="text-xs bg-muted/50" data-testid={`badge-goes-to-${choice.id}`}>
-                            <ArrowRight className="w-3 h-3 mr-1" />
-                            {graph.steps[choice.nextStepId!]?.question?.slice(0, 20) || "Next step"}...
-                          </Badge>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center">
-                          <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
-                          <svg 
-                            width="10" 
-                            height="8" 
-                            viewBox="0 0 10 8" 
-                            className="text-gray-400 dark:text-gray-500 fill-current"
-                          >
-                            <polygon points="5,8 0,0 10,0" />
-                          </svg>
-                          <div className="mt-1">
-                            <TreeNode
-                              stepId={choice.nextStepId!}
-                              graph={graph}
-                              selectedStepId={selectedStepId}
-                              onSelectStep={onSelectStep}
-                              onUpdateStep={onUpdateStep}
-                              onDeleteStep={onDeleteStep}
-                              onAddStep={onAddStep}
-                              onRevertStep={onRevertStep}
-                              depth={depth + 1}
-                              visitedSteps={newVisited}
-                            />
-                          </div>
-                        </div>
-                      )
-                    ) : (
-                      <AddStepButton
-                        parentStepId={stepId}
-                        choiceId={choice.id}
-                        onAddStep={onAddStep}
-                      />
-                    )}
-                  </div>
-                );
-              });
-            })()}
-          </div>
-        </div>
-      ) : step.type === "conclusion" ? (
-        null
-      ) : (
-        step.type !== "choice" && (
-          step.nextStepId && graph.steps[step.nextStepId] ? (
-            <div className="flex flex-col items-center">
+      {renderChildren && (
+        <>
+          {step.type === "choice" && step.choices && step.choices.length > 0 ? (
+            <div className="flex flex-col items-center mt-2">
               <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
-              <svg 
-                width="10" 
-                height="8" 
-                viewBox="0 0 10 8" 
-                className="text-gray-400 dark:text-gray-500 fill-current"
-              >
-                <polygon points="5,8 0,0 10,0" />
-              </svg>
-              <div className="mt-1">
-                <TreeNode
-                  stepId={step.nextStepId}
+              <div className="flex items-start gap-4">
+                {(() => {
+                  const renderedStepsInBranches = new Set<string>();
+                  return step.choices!.map((choice, index) => {
+                    const hasNextStep = choice.nextStepId && graph.steps[choice.nextStepId];
+                    const isAlreadyRendered = choice.nextStepId && renderedStepsInBranches.has(choice.nextStepId);
+                    
+                    if (hasNextStep && choice.nextStepId) {
+                      renderedStepsInBranches.add(choice.nextStepId);
+                    }
+                    
+                    return (
+                      <div key={choice.id} className="flex flex-col items-center relative">
+                        {index === 0 && step.choices!.length > 1 && (
+                          <div 
+                            className="absolute top-0 left-1/2 h-px bg-gray-400 dark:bg-gray-500" 
+                            style={{ 
+                              width: `calc(${(step.choices!.length - 1) * 100}% + ${(step.choices!.length - 1) * 16}px)`,
+                            }}
+                          />
+                        )}
+                        
+                        {step.choices!.length > 1 && (
+                          <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
+                        )}
+                        
+                        <svg 
+                          width="10" 
+                          height="8" 
+                          viewBox="0 0 10 8" 
+                          className="text-gray-400 dark:text-gray-500 fill-current"
+                        >
+                          <polygon points="5,8 0,0 10,0" />
+                        </svg>
+
+                        <div className="mt-1 px-2 py-0.5 text-[10px] bg-muted rounded text-muted-foreground max-w-[120px] truncate">
+                          {choice.label}
+                        </div>
+                        
+                        {hasNextStep ? (
+                          isAlreadyRendered ? (
+                            <div className="flex flex-col items-center mt-2">
+                              <Badge variant="outline" className="text-xs bg-muted/50" data-testid={`badge-goes-to-${choice.id}`}>
+                                <ArrowRight className="w-3 h-3 mr-1" />
+                                {graph.steps[choice.nextStepId!]?.question?.slice(0, 20) || "Next step"}...
+                              </Badge>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center">
+                              <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
+                              <svg 
+                                width="10" 
+                                height="8" 
+                                viewBox="0 0 10 8" 
+                                className="text-gray-400 dark:text-gray-500 fill-current"
+                              >
+                                <polygon points="5,8 0,0 10,0" />
+                              </svg>
+                              <div className="mt-1">
+                                <TreeNode
+                                  stepId={choice.nextStepId!}
+                                  graph={graph}
+                                  selectedStepId={selectedStepId}
+                                  onSelectStep={onSelectStep}
+                                  onUpdateStep={onUpdateStep}
+                                  onDeleteStep={onDeleteStep}
+                                  onAddStep={onAddStep}
+                                  onRevertStep={onRevertStep}
+                                  depth={depth + 1}
+                                  visitedSteps={newVisited}
+                                />
+                              </div>
+                            </div>
+                          )
+                        ) : (
+                          <AddStepButton
+                            parentStepId={stepId}
+                            choiceId={choice.id}
+                            onAddStep={onAddStep}
+                          />
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          ) : step.type === "conclusion" ? (
+            null
+          ) : (
+            step.type !== "choice" && (
+              step.nextStepId && graph.steps[step.nextStepId] ? (
+                <div className="flex flex-col items-center">
+                  <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
+                  <svg 
+                    width="10" 
+                    height="8" 
+                    viewBox="0 0 10 8" 
+                    className="text-gray-400 dark:text-gray-500 fill-current"
+                  >
+                    <polygon points="5,8 0,0 10,0" />
+                  </svg>
+                  <div className="mt-1">
+                    <TreeNode
+                      stepId={step.nextStepId}
+                      graph={graph}
+                      selectedStepId={selectedStepId}
+                      onSelectStep={onSelectStep}
+                      onUpdateStep={onUpdateStep}
+                      onDeleteStep={onDeleteStep}
+                      onAddStep={onAddStep}
+                      onRevertStep={onRevertStep}
+                      depth={depth + 1}
+                      visitedSteps={newVisited}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <AddStepButton
+                  parentStepId={stepId}
+                  onAddStep={onAddStep}
+                />
+              )
+            )
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Drag-and-drop helpers ───────────────────────────────────────────────
+
+/** Walk a linear chain of steps starting from `startStepId`.
+ *  Stops at choice steps (included at end), conclusion steps (included at end),
+ *  or when no nextStepId exists. */
+function getLinearChain(
+  graph: FormGraph,
+  startStepId: string,
+  visited: Set<string> = new Set()
+): string[] {
+  const chain: string[] = [];
+  let current: string | null = startStepId;
+
+  while (current && !visited.has(current)) {
+    const step: Step | undefined = graph.steps[current];
+    if (!step) break;
+    visited.add(current);
+    chain.push(current);
+    // Choice and conclusion steps terminate the chain
+    if (step.type === "choice" || step.type === "conclusion") break;
+    current = step.nextStepId || null;
+  }
+  return chain;
+}
+
+/** After reordering a chain's first element, update any step in the graph
+ *  whose nextStepId (or choice branch) pointed to the old entry. */
+function updateIncomingPointers(
+  graph: FormGraph,
+  oldEntryId: string,
+  newEntryId: string
+) {
+  if (oldEntryId === newEntryId) return;
+
+  for (const step of Object.values(graph.steps)) {
+    if (step.nextStepId === oldEntryId) {
+      step.nextStepId = newEntryId;
+    }
+    if (step.type === "choice" && step.choices) {
+      for (const choice of step.choices) {
+        if (choice.nextStepId === oldEntryId) {
+          choice.nextStepId = newEntryId;
+        }
+      }
+    }
+  }
+  if (graph.rootStepId === oldEntryId) {
+    graph.rootStepId = newEntryId;
+  }
+}
+
+/** Wrapper that makes a step draggable via @dnd-kit useSortable. */
+function SortableStepNode({
+  stepId,
+  disabled = false,
+  children,
+}: {
+  stepId: string;
+  disabled?: boolean;
+  children: (listeners: Record<string, Function> | undefined) => React.ReactNode;
+}) {
+  const {
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    listeners,
+    attributes,
+  } = useSortable({ id: stepId, disabled });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 10 : 0,
+    position: "relative" as const,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      {children(disabled ? undefined : (listeners as Record<string, Function> | undefined))}
+    </div>
+  );
+}
+
+/** Renders a linear chain of steps inside a DndContext + SortableContext.
+ *  Choice branches recurse into new DraggableLinearChain instances. */
+function DraggableLinearChain({
+  startStepId,
+  graph,
+  onGraphChange,
+  selectedStepId,
+  onSelectStep,
+  onUpdateStep,
+  onDeleteStep,
+  onAddStep,
+  onRevertStep,
+  isRootChain = false,
+  parentVisited = new Set<string>(),
+}: {
+  startStepId: string;
+  graph: FormGraph;
+  onGraphChange: (graph: FormGraph, addHistory?: boolean) => void;
+  selectedStepId: string | null;
+  onSelectStep: (stepId: string | null) => void;
+  onUpdateStep: (stepId: string, updates: Partial<Step>) => void;
+  onDeleteStep: (stepId: string) => void;
+  onAddStep: (parentId: string, type: "text" | "choice" | "quantity" | "conclusion", choiceId?: string) => void;
+  onRevertStep?: (stepId: string) => void;
+  isRootChain?: boolean;
+  parentVisited?: Set<string>;
+}) {
+  const chain = useMemo(
+    () => getLinearChain(graph, startStepId, new Set(parentVisited)),
+    [graph, startStepId, parentVisited]
+  );
+
+  // Only text/quantity steps within the chain are draggable
+  const draggableIds = useMemo(
+    () => chain.filter((id) => {
+      const s = graph.steps[id];
+      return s && s.type !== "choice" && s.type !== "conclusion";
+    }),
+    [chain, graph]
+  );
+
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor)
+  );
+
+  // Build the full visited set for sub-chains
+  const chainVisited = useMemo(() => {
+    const v = new Set(parentVisited);
+    chain.forEach((id) => v.add(id));
+    return v;
+  }, [parentVisited, chain]);
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  }, []);
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setActiveId(null);
+      const { active, over } = event;
+      if (!active || !over || active.id === over.id) return;
+
+      const activeIdx = chain.indexOf(active.id as string);
+      const overIdx = chain.indexOf(over.id as string);
+      if (activeIdx === -1 || overIdx === -1) return;
+
+      // Build new chain order
+      const newChain = [...chain];
+      const [moved] = newChain.splice(activeIdx, 1);
+      newChain.splice(overIdx, 0, moved);
+
+      // Deep-clone graph and update pointers
+      const newGraph: FormGraph = JSON.parse(JSON.stringify(graph));
+
+      // Re-wire nextStepId for each step in the new chain order
+      for (let i = 0; i < newChain.length - 1; i++) {
+        const step = newGraph.steps[newChain[i]];
+        if (step.type !== "choice") {
+          step.nextStepId = newChain[i + 1];
+        }
+      }
+
+      // The last step in the chain keeps its original nextStepId/choice branches
+      // (it was either a choice, conclusion, or already pointed beyond the chain)
+      const lastInNewChain = newChain[newChain.length - 1];
+      const lastInOldChain = chain[chain.length - 1];
+      if (lastInNewChain !== lastInOldChain) {
+        // The old tail had the "exit" pointer. Copy it to the new tail.
+        const oldTail = graph.steps[lastInOldChain];
+        const newTail = newGraph.steps[lastInNewChain];
+        if (oldTail.type !== "choice" && newTail.type !== "choice") {
+          newTail.nextStepId = oldTail.nextStepId;
+        }
+        // The step that WAS last no longer needs the exit pointer if it moved up
+        if (newGraph.steps[lastInOldChain].type !== "choice") {
+          // It now points to the step after it in the new order
+          const oldTailNewIdx = newChain.indexOf(lastInOldChain);
+          if (oldTailNewIdx !== -1 && oldTailNewIdx < newChain.length - 1) {
+            newGraph.steps[lastInOldChain].nextStepId = newChain[oldTailNewIdx + 1];
+          }
+        }
+      }
+
+      // Update incoming pointers if the chain's entry point changed
+      const oldEntry = chain[0];
+      const newEntry = newChain[0];
+      updateIncomingPointers(newGraph, oldEntry, newEntry);
+
+      onGraphChange(newGraph, true);
+    },
+    [chain, graph, onGraphChange]
+  );
+
+  const handleDragCancel = useCallback(() => setActiveId(null), []);
+
+  const activeStep = activeId ? graph.steps[activeId] : null;
+
+  // Check for cycle at the start
+  if (parentVisited.has(startStepId)) {
+    const step = graph.steps[startStepId];
+    return (
+      <div className="flex flex-col items-center">
+        <Badge variant="outline" className="text-xs bg-muted/50" data-testid={`badge-continues-to-${startStepId}`}>
+          <ArrowRight className="w-3 h-3 mr-1" />
+          Continues to: {step?.question?.slice(0, 25) ?? "..."}...
+        </Badge>
+      </div>
+    );
+  }
+
+  // No draggable items or only one—render without DnD context
+  if (draggableIds.length < 2) {
+    return (
+      <div className="flex flex-col items-center">
+        {chain.map((stepId, index) => {
+          const step = graph.steps[stepId];
+          if (!step) return null;
+          const isRoot = isRootChain && index === 0;
+          const isLast = index === chain.length - 1;
+          const showNonDraggableIcon = step.type === "choice";
+
+          return (
+            <Fragment key={stepId}>
+              {index > 0 && (
+                <div className="flex flex-col items-center">
+                  <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
+                  <svg width="10" height="8" viewBox="0 0 10 8" className="text-gray-400 dark:text-gray-500 fill-current">
+                    <polygon points="5,8 0,0 10,0" />
+                  </svg>
+                  <div className="mt-1" />
+                </div>
+              )}
+
+              <TreeNode
+                stepId={stepId}
+                graph={graph}
+                selectedStepId={selectedStepId}
+                onSelectStep={onSelectStep}
+                onUpdateStep={onUpdateStep}
+                onDeleteStep={onDeleteStep}
+                onAddStep={onAddStep}
+                onRevertStep={onRevertStep}
+                isRoot={isRoot}
+                depth={0}
+                visitedSteps={chainVisited}
+                renderChildren={false}
+              />
+
+              {/* Choice step at end: render branches as sub-chains */}
+              {isLast && step.type === "choice" && step.choices && step.choices.length > 0 && (
+                <ChoiceBranchesRenderer
+                  stepId={stepId}
+                  step={step}
                   graph={graph}
+                  onGraphChange={onGraphChange}
                   selectedStepId={selectedStepId}
                   onSelectStep={onSelectStep}
                   onUpdateStep={onUpdateStep}
                   onDeleteStep={onDeleteStep}
                   onAddStep={onAddStep}
                   onRevertStep={onRevertStep}
-                  depth={depth + 1}
-                  visitedSteps={newVisited}
+                  visitedSteps={chainVisited}
                 />
+              )}
+
+              {/* Add step button at end of non-choice, non-conclusion chain */}
+              {isLast && step.type !== "choice" && step.type !== "conclusion" && !step.nextStepId && (
+                <AddStepButton parentStepId={stepId} onAddStep={onAddStep} />
+              )}
+            </Fragment>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <SortableContext items={draggableIds} strategy={verticalListSortingStrategy}>
+        <div className="flex flex-col items-center">
+          {chain.map((stepId, index) => {
+            const step = graph.steps[stepId];
+            if (!step) return null;
+            const isRoot = isRootChain && index === 0;
+            const isLast = index === chain.length - 1;
+            const isDraggable = step.type !== "choice" && step.type !== "conclusion";
+
+            return (
+              <Fragment key={stepId}>
+                {/* Connector line + arrow */}
+                {index > 0 && (
+                  <div className="flex flex-col items-center">
+                    <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
+                    <svg width="10" height="8" viewBox="0 0 10 8" className="text-gray-400 dark:text-gray-500 fill-current">
+                      <polygon points="5,8 0,0 10,0" />
+                    </svg>
+                    <div className="mt-1" />
+                  </div>
+                )}
+
+                {isDraggable ? (
+                  <SortableStepNode stepId={stepId}>
+                    {(dragListeners) => (
+                      <TreeNode
+                        stepId={stepId}
+                        graph={graph}
+                        selectedStepId={selectedStepId}
+                        onSelectStep={onSelectStep}
+                        onUpdateStep={onUpdateStep}
+                        onDeleteStep={onDeleteStep}
+                        onAddStep={onAddStep}
+                        onRevertStep={onRevertStep}
+                        isRoot={isRoot}
+                        depth={0}
+                        visitedSteps={chainVisited}
+                        renderChildren={false}
+                        dragHandleListeners={dragListeners}
+                      />
+                    )}
+                  </SortableStepNode>
+                ) : (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="relative">
+                          {step.type === "choice" && (
+                            <div className="absolute -left-6 top-1/2 -translate-y-1/2">
+                              <Lock className="w-3.5 h-3.5 text-muted-foreground/50" />
+                            </div>
+                          )}
+                          <TreeNode
+                            stepId={stepId}
+                            graph={graph}
+                            selectedStepId={selectedStepId}
+                            onSelectStep={onSelectStep}
+                            onUpdateStep={onUpdateStep}
+                            onDeleteStep={onDeleteStep}
+                            onAddStep={onAddStep}
+                            onRevertStep={onRevertStep}
+                            isRoot={isRoot}
+                            depth={0}
+                            visitedSteps={chainVisited}
+                            renderChildren={false}
+                          />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="left">
+                        <p className="text-xs max-w-48">
+                          {step.type === "choice"
+                            ? "Choice steps with branches cannot be reordered. Reorder the steps within each branch instead."
+                            : "Conclusion steps cannot be reordered."}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+
+                {/* Choice step at end: render branches as sub-chains */}
+                {isLast && step.type === "choice" && step.choices && step.choices.length > 0 && (
+                  <ChoiceBranchesRenderer
+                    stepId={stepId}
+                    step={step}
+                    graph={graph}
+                    onGraphChange={onGraphChange}
+                    selectedStepId={selectedStepId}
+                    onSelectStep={onSelectStep}
+                    onUpdateStep={onUpdateStep}
+                    onDeleteStep={onDeleteStep}
+                    onAddStep={onAddStep}
+                    onRevertStep={onRevertStep}
+                    visitedSteps={chainVisited}
+                  />
+                )}
+
+                {/* Add step button at end of non-choice, non-conclusion chain */}
+                {isLast && step.type !== "choice" && step.type !== "conclusion" && !step.nextStepId && (
+                  <AddStepButton parentStepId={stepId} onAddStep={onAddStep} />
+                )}
+              </Fragment>
+            );
+          })}
+        </div>
+      </SortableContext>
+
+      <DragOverlay>
+        {activeStep && (
+          <div className="shadow-lg rounded-md border-2 border-primary/30 bg-background p-4 opacity-90 max-w-[280px]">
+            <p className="font-medium text-sm line-clamp-2">{activeStep.question}</p>
+            <Badge variant="outline" className="text-xs mt-1">
+              {activeStep.type === "text" ? "Text" : activeStep.type === "quantity" ? "Quantity" : activeStep.type}
+            </Badge>
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+/** Renders choice branches as sub-DraggableLinearChains. */
+function ChoiceBranchesRenderer({
+  stepId,
+  step,
+  graph,
+  onGraphChange,
+  selectedStepId,
+  onSelectStep,
+  onUpdateStep,
+  onDeleteStep,
+  onAddStep,
+  onRevertStep,
+  visitedSteps,
+}: {
+  stepId: string;
+  step: Step;
+  graph: FormGraph;
+  onGraphChange: (graph: FormGraph, addHistory?: boolean) => void;
+  selectedStepId: string | null;
+  onSelectStep: (stepId: string | null) => void;
+  onUpdateStep: (stepId: string, updates: Partial<Step>) => void;
+  onDeleteStep: (stepId: string) => void;
+  onAddStep: (parentId: string, type: "text" | "choice" | "quantity" | "conclusion", choiceId?: string) => void;
+  onRevertStep?: (stepId: string) => void;
+  visitedSteps: Set<string>;
+}) {
+  if (!step.choices || step.choices.length === 0) return null;
+
+  return (
+    <div className="flex flex-col items-center mt-2">
+      <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
+      <div className="flex items-start gap-4">
+        {(() => {
+          const renderedSteps = new Set<string>();
+          return step.choices!.map((choice, index) => {
+            const hasNextStep = choice.nextStepId && graph.steps[choice.nextStepId];
+            const isAlreadyRendered = choice.nextStepId && renderedSteps.has(choice.nextStepId);
+
+            if (hasNextStep && choice.nextStepId) {
+              renderedSteps.add(choice.nextStepId);
+            }
+
+            return (
+              <div key={choice.id} className="flex flex-col items-center relative">
+                {index === 0 && step.choices!.length > 1 && (
+                  <div
+                    className="absolute top-0 left-1/2 h-px bg-gray-400 dark:bg-gray-500"
+                    style={{
+                      width: `calc(${(step.choices!.length - 1) * 100}% + ${(step.choices!.length - 1) * 16}px)`,
+                    }}
+                  />
+                )}
+
+                {step.choices!.length > 1 && (
+                  <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
+                )}
+
+                <svg
+                  width="10"
+                  height="8"
+                  viewBox="0 0 10 8"
+                  className="text-gray-400 dark:text-gray-500 fill-current"
+                >
+                  <polygon points="5,8 0,0 10,0" />
+                </svg>
+
+                <div className="mt-1 px-2 py-0.5 text-[10px] bg-muted rounded text-muted-foreground max-w-[120px] truncate">
+                  {choice.label}
+                </div>
+
+                {hasNextStep ? (
+                  isAlreadyRendered ? (
+                    <div className="flex flex-col items-center mt-2">
+                      <Badge variant="outline" className="text-xs bg-muted/50" data-testid={`badge-goes-to-${choice.id}`}>
+                        <ArrowRight className="w-3 h-3 mr-1" />
+                        {graph.steps[choice.nextStepId!]?.question?.slice(0, 20) || "Next step"}...
+                      </Badge>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center">
+                      <div className="w-px h-4 bg-gray-400 dark:bg-gray-500" />
+                      <svg
+                        width="10"
+                        height="8"
+                        viewBox="0 0 10 8"
+                        className="text-gray-400 dark:text-gray-500 fill-current"
+                      >
+                        <polygon points="5,8 0,0 10,0" />
+                      </svg>
+                      <div className="mt-1">
+                        <DraggableLinearChain
+                          startStepId={choice.nextStepId!}
+                          graph={graph}
+                          onGraphChange={onGraphChange}
+                          selectedStepId={selectedStepId}
+                          onSelectStep={onSelectStep}
+                          onUpdateStep={onUpdateStep}
+                          onDeleteStep={onDeleteStep}
+                          onAddStep={onAddStep}
+                          onRevertStep={onRevertStep}
+                          parentVisited={visitedSteps}
+                        />
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <AddStepButton
+                    parentStepId={stepId}
+                    choiceId={choice.id}
+                    onAddStep={onAddStep}
+                  />
+                )}
               </div>
-            </div>
-          ) : (
-            <AddStepButton
-              parentStepId={stepId}
-              onAddStep={onAddStep}
-            />
-          )
-        )
-      )}
+            );
+          });
+        })()}
+      </div>
     </div>
   );
 }
@@ -1162,16 +1740,17 @@ export function DecisionTreeEditor({
   return (
     <div className="w-full overflow-x-auto pb-8">
       <div className="flex justify-center min-w-max py-6 px-4">
-        <TreeNode
-          stepId={graph.rootStepId}
+        <DraggableLinearChain
+          startStepId={graph.rootStepId}
           graph={graph}
+          onGraphChange={onGraphChange}
           selectedStepId={selectedStepId}
           onSelectStep={onSelectStep}
           onUpdateStep={handleUpdateStep}
           onDeleteStep={handleDeleteStep}
           onAddStep={handleAddStep}
           onRevertStep={handleRevertStep}
-          isRoot={true}
+          isRootChain={true}
         />
       </div>
     </div>

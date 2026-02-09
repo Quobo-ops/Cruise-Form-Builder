@@ -34,13 +34,20 @@ import {
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  Ship, Copy, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Upload, Trash2, Info, Eye
+  Ship, Copy, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Upload, Trash2, Info, Eye, ClipboardList, Plus, ExternalLink, Pencil
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Cruise, Template, CruiseInventory, Submission, QuantityAnswer } from "@shared/schema";
+import type { Cruise, Template, CruiseForm, CruiseInventory, Submission, QuantityAnswer } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUpload } from "@/hooks/use-upload";
@@ -50,6 +57,7 @@ import { UnsavedChangesDialog } from "@/components/unsaved-changes-dialog";
 type CruiseWithCounts = Cruise & {
   submissionCount: number;
   unviewedCount: number;
+  forms?: CruiseForm[];
 };
 
 export default function CruiseDetail() {
@@ -66,6 +74,12 @@ export default function CruiseDetail() {
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [editingLimit, setEditingLimit] = useState<{ stepId: string; choiceId: string; value: string } | null>(null);
   
+  // Forms tab state
+  const [isAddFormDialogOpen, setIsAddFormDialogOpen] = useState(false);
+  const [newFormLabel, setNewFormLabel] = useState("");
+  const [newFormStage, setNewFormStage] = useState("booking");
+  const [newFormTemplateId, setNewFormTemplateId] = useState("");
+
   const [learnMoreHeader, setLearnMoreHeader] = useState("");
   const [learnMoreImages, setLearnMoreImages] = useState<string[]>([]);
   const [learnMoreDescription, setLearnMoreDescription] = useState("");
@@ -113,6 +127,11 @@ export default function CruiseDetail() {
   const { data: submissions } = useQuery<Submission[]>({
     queryKey: ["/api/cruises", id, "submissions"],
     enabled: !!id && isAuthenticated,
+  });
+
+  const { data: allTemplates } = useQuery<Template[]>({
+    queryKey: ["/api/templates"],
+    enabled: isAuthenticated,
   });
 
   // Navigation guard for unsaved Learn More changes
@@ -225,6 +244,54 @@ export default function CruiseDetail() {
       });
     },
   });
+
+  const addFormMutation = useMutation({
+    mutationFn: async (data: { templateId: string; label: string; stage: string }) => {
+      return await apiRequest("POST", `/api/cruises/${id}/forms`, data);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/cruises", id] });
+      setIsAddFormDialogOpen(false);
+      setNewFormLabel("");
+      setNewFormStage("booking");
+      setNewFormTemplateId("");
+      toast({ title: "Form added", description: "A new form has been added to this cruise." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to add form.", variant: "destructive" });
+    },
+  });
+
+  const updateFormMutation = useMutation({
+    mutationFn: async ({ formId, data }: { formId: string; data: { label?: string; stage?: string; isActive?: boolean } }) => {
+      return await apiRequest("PATCH", `/api/cruises/${id}/forms/${formId}`, data);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/cruises", id] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update form.", variant: "destructive" });
+    },
+  });
+
+  const deleteFormMutation = useMutation({
+    mutationFn: async (formId: string) => {
+      return await apiRequest("DELETE", `/api/cruises/${id}/forms/${formId}`);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/cruises", id] });
+      toast({ title: "Form removed", description: "The form has been removed from this cruise." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to remove form.", variant: "destructive" });
+    },
+  });
+
+  const copyFormLink = (shareId: string) => {
+    const url = `${window.location.origin}/form/${shareId}`;
+    navigator.clipboard.writeText(url);
+    toast({ title: "Link copied", description: "The form link has been copied to your clipboard." });
+  };
 
   const handleSelectSubmission = (submission: Submission) => {
     setSelectedSubmission(submission);
@@ -474,8 +541,12 @@ export default function CruiseDetail() {
           </div>
         </div>
 
-        <Tabs defaultValue="inventory" className="w-full">
+        <Tabs defaultValue="forms" className="w-full">
           <TabsList>
+            <TabsTrigger value="forms" className="gap-1.5" data-testid="tab-forms">
+              <ClipboardList className="w-4 h-4" />
+              <span className="hidden sm:inline">Forms</span>
+            </TabsTrigger>
             <TabsTrigger value="inventory" className="gap-1.5" data-testid="tab-inventory">
               <Package className="w-4 h-4" />
               <span className="hidden sm:inline">Inventory</span>
@@ -489,6 +560,126 @@ export default function CruiseDetail() {
               <span className="hidden sm:inline">Learn More</span>
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="forms">
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base">Forms</CardTitle>
+                    <CardDescription>
+                      Manage forms for different stages of this cruise. Each form has its own shareable link.
+                    </CardDescription>
+                  </div>
+                  <Button
+                    onClick={() => setIsAddFormDialogOpen(true)}
+                    size="sm"
+                    className="gap-1.5"
+                    data-testid="button-add-form"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Form
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {cruise.forms && cruise.forms.length > 0 ? (
+                  <div className="space-y-3">
+                    {cruise.forms.map((form) => {
+                      const formTemplate = allTemplates?.find(t => t.id === form.templateId);
+                      return (
+                        <div
+                          key={form.id}
+                          className={`p-4 border rounded-lg transition-colors ${
+                            form.isActive ? "bg-background" : "bg-muted/50 opacity-75"
+                          }`}
+                          data-testid={`form-card-${form.id}`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-medium">{form.label}</h3>
+                                <Badge variant="outline" className="text-xs capitalize">{form.stage}</Badge>
+                                {form.isActive ? (
+                                  <Badge variant="default" className="bg-green-600 text-xs">Active</Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="text-xs">Inactive</Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                Template: {formTemplate?.name || "Unknown"}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => copyFormLink(form.shareId)}
+                                title="Copy form link"
+                                data-testid={`button-copy-form-link-${form.id}`}
+                              >
+                                <Copy className="w-4 h-4" />
+                              </Button>
+                              <Link href={`/admin/builder/${form.templateId}?from=cruise-${id}`}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Edit template"
+                                  data-testid={`button-edit-form-template-${form.id}`}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                              </Link>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => window.open(`/form/${form.shareId}`, "_blank")}
+                                title="Open form"
+                                data-testid={`button-open-form-${form.id}`}
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </Button>
+                              <Switch
+                                checked={form.isActive ?? true}
+                                onCheckedChange={(checked) =>
+                                  updateFormMutation.mutate({
+                                    formId: form.id,
+                                    data: { isActive: checked },
+                                  })
+                                }
+                                data-testid={`switch-form-active-${form.id}`}
+                              />
+                              {cruise.forms && cruise.forms.length > 1 && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    if (confirm("Remove this form from the cruise?")) {
+                                      deleteFormMutation.mutate(form.id);
+                                    }
+                                  }}
+                                  title="Remove form"
+                                  className="text-destructive hover:text-destructive"
+                                  data-testid={`button-delete-form-${form.id}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <ClipboardList className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No forms yet. Add a form to get started.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           <TabsContent value="inventory">
             <Card>
@@ -1064,6 +1255,80 @@ export default function CruiseDetail() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Add Form Dialog */}
+      <Dialog open={isAddFormDialogOpen} onOpenChange={setIsAddFormDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Form to Cruise</DialogTitle>
+            <DialogDescription>
+              Add a new form for a different stage of this cruise.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Form Label</Label>
+              <Input
+                value={newFormLabel}
+                onChange={(e) => setNewFormLabel(e.target.value)}
+                placeholder="e.g., Dietary Preferences"
+                data-testid="input-form-label"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Stage</Label>
+              <Select value={newFormStage} onValueChange={setNewFormStage}>
+                <SelectTrigger data-testid="select-form-stage">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pre-booking">Pre-Booking</SelectItem>
+                  <SelectItem value="booking">Booking</SelectItem>
+                  <SelectItem value="post-booking">Post-Booking</SelectItem>
+                  <SelectItem value="pre-cruise">Pre-Cruise</SelectItem>
+                  <SelectItem value="post-cruise">Post-Cruise</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Template</Label>
+              <Select value={newFormTemplateId} onValueChange={setNewFormTemplateId}>
+                <SelectTrigger data-testid="select-form-template">
+                  <SelectValue placeholder="Select a template" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allTemplates?.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddFormDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() =>
+                addFormMutation.mutate({
+                  templateId: newFormTemplateId,
+                  label: newFormLabel,
+                  stage: newFormStage,
+                })
+              }
+              disabled={!newFormLabel.trim() || !newFormTemplateId || addFormMutation.isPending}
+              data-testid="button-submit-add-form"
+            >
+              {addFormMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : null}
+              Add Form
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <UnsavedChangesDialog
         open={showUnsavedDialog}

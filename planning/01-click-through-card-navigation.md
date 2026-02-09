@@ -1,5 +1,7 @@
 # 01: Click-Through Card Navigation
 
+> **Status: Implemented**
+
 ## Issue
 
 Template cards in the admin dashboard are not directly clickable. Unlike cruise cards (which navigate on click at `admin-dashboard.tsx:458`), template cards require users to open a 3-dot dropdown menu and select "Edit" to navigate to the form builder. This creates an inconsistent UX where cruises respond to direct clicks but templates do not.

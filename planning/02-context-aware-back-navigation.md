@@ -1,5 +1,7 @@
 # 02: Context-Aware Back Navigation
 
+> **Status: Implemented**
+
 ## Issue
 
 When navigating from the Form Builder back to the dashboard, the user always lands on the Cruises tab (the default), regardless of how they arrived at the form builder. If a user was on the Templates tab, clicked a template to edit it, then clicked "Back", they should return to the Templates tab -- not the Cruises tab.

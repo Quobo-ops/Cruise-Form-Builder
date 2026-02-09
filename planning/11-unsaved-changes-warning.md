@@ -1,5 +1,7 @@
 # 11: Unsaved Changes Warning Dialogs
 
+> **Status: Implemented**
+
 ## Issue
 
 Multiple pages have autosave or fire-and-forget save mechanisms, but users receive no warning when navigating away with unsaved changes. This leads to silent data loss in edge cases:

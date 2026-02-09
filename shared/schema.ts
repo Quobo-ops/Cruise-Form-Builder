@@ -121,6 +121,29 @@ export const insertCruiseSchema = createInsertSchema(cruises).omit({
 export type InsertCruise = z.infer<typeof insertCruiseSchema>;
 export type Cruise = typeof cruises.$inferSelect;
 
+// Cruise Forms junction table (many forms per cruise)
+export const cruiseForms = pgTable("cruise_forms", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  cruiseId: varchar("cruise_id").notNull().references(() => cruises.id, { onDelete: "cascade" }),
+  templateId: varchar("template_id").notNull().references(() => templates.id),
+  label: text("label").notNull(),
+  stage: text("stage").notNull().default("booking"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").default(true),
+  shareId: varchar("share_id").unique().notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCruiseFormSchema = createInsertSchema(cruiseForms).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCruiseForm = z.infer<typeof insertCruiseFormSchema>;
+export type CruiseForm = typeof cruiseForms.$inferSelect;
+
 // Quantity answer schema
 export const quantityAnswerSchema = z.object({
   choiceId: z.string(),
@@ -136,6 +159,7 @@ export const submissions = pgTable("submissions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   templateId: varchar("template_id").notNull().references(() => templates.id),
   cruiseId: varchar("cruise_id").references(() => cruises.id),
+  cruiseFormId: varchar("cruise_form_id").references(() => cruiseForms.id),
   answers: jsonb("answers").notNull().$type<Record<string, string | QuantityAnswer[]>>(),
   customerName: text("customer_name"),
   customerPhone: text("customer_phone"),

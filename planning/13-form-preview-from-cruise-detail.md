@@ -1,5 +1,7 @@
 # 13: Form Preview from Cruise Detail
 
+> **Status: Implemented**
+
 ## Issue
 
 When an admin is on the Cruise Detail page (`cruise-detail.tsx`), there is no way to preview or test the form that is attached to the cruise. To preview the form, the admin must:

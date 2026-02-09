@@ -1,5 +1,7 @@
 # 03: Multiple Forms Per Cruise
 
+> **Status: Implemented**
+
 ## Issue
 
 Currently, each cruise has exactly one `templateId` foreign key (`shared/schema.ts:100`), meaning each cruise is linked to a single form template. Users need to create multiple forms for different stages of informational gathering -- e.g., an initial interest form, a detailed booking form, a dietary preferences form, and a post-cruise feedback form.

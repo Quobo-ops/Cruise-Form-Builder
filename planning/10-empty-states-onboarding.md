@@ -1,5 +1,7 @@
 # 10: Empty States and Onboarding Guidance
 
+> **Status: Implemented**
+
 ## Issue
 
 When a new user logs in for the first time, they see empty lists with minimal guidance. The existing empty states (`admin-dashboard.tsx:527-543` for cruises, `682-699` for templates) show an icon, a brief message, and a create button, but they don't explain the workflow or help the user understand what to do first.

@@ -1,5 +1,7 @@
 # 07: Search and Filter State Persistence
 
+> **Status: Implemented**
+
 ## Issue
 
 The admin dashboard uses a single `searchTerm` state variable (line 53 of `admin-dashboard.tsx`) that is:

@@ -1,5 +1,7 @@
 # 05: Submission Viewed-Status Tracking
 
+> **Status: Implemented**
+
 ## Issue
 
 The `isViewed` field exists on the submissions table (`shared/schema.ts:140`) and the dashboard shows "X new" badges on cruise cards (`admin-dashboard.tsx:464-468`), but the marking-as-viewed behavior is incomplete:

@@ -8,7 +8,7 @@ import { storage } from "./storage";
 import { randomBytes } from "crypto";
 import bcrypt from "bcrypt";
 import { z } from "zod";
-import { insertTemplateSchema, insertSubmissionSchema, graphSchema, quantityAnswerSchema } from "@shared/schema";
+import { insertTemplateSchema, insertSubmissionSchema, graphSchema, quantityAnswerSchema, insertCruiseFormSchema } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 
 declare module "express-session" {
@@ -153,6 +153,20 @@ const submissionSchema = z.object({
   ),
 });
 
+const cruiseFormCreateSchema = z.object({
+  templateId: z.string().min(1, "Template required"),
+  label: z.string().min(1, "Label required"),
+  stage: z.string().min(1).default("booking"),
+  isActive: z.boolean().optional().default(true),
+});
+
+const cruiseFormUpdateSchema = z.object({
+  label: z.string().min(1).optional(),
+  stage: z.string().min(1).optional(),
+  isActive: z.boolean().optional(),
+  sortOrder: z.number().optional(),
+});
+
 const notificationSettingsSchema = z.object({
   emailOnSubmission: z.boolean().optional(),
   emailAddress: z.string().email().nullable().optional(),
@@ -281,7 +295,14 @@ export async function registerRoutes(
   app.get("/api/public/cruises", async (req, res) => {
     try {
       const publishedCruises = await storage.getPublishedCruises();
-      res.json(publishedCruises);
+      // Attach active forms for each cruise
+      const cruisesWithForms = await Promise.all(
+        publishedCruises.map(async (cruise) => {
+          const forms = await storage.getCruiseForms(cruise.id);
+          return { ...cruise, forms: forms.filter(f => f.isActive) };
+        })
+      );
+      res.json(cruisesWithForms);
     } catch (error) {
       console.error("Get published cruises error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -461,7 +482,8 @@ export async function registerRoutes(
       }
       const submissionCount = await storage.getSubmissionCountByCruise(cruise.id);
       const unviewedCount = await storage.getUnviewedSubmissionCount(cruise.id);
-      res.json({ ...cruise, submissionCount, unviewedCount });
+      const forms = await storage.getCruiseForms(cruise.id);
+      res.json({ ...cruise, submissionCount, unviewedCount, forms });
     } catch (error) {
       console.error("Get cruise error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -507,6 +529,18 @@ export async function registerRoutes(
         shareId,
         isActive: isActive !== false,
         isPublished: isPublished || false,
+      });
+
+      // Auto-create default CruiseForm entry for the primary template
+      const formShareId = randomBytes(8).toString("hex");
+      await storage.createCruiseForm({
+        cruiseId: cruise.id,
+        templateId,
+        label: "Booking Form",
+        stage: "booking",
+        sortOrder: 0,
+        isActive: true,
+        shareId: formShareId,
       });
 
       // Initialize inventory for quantity steps
@@ -578,6 +612,95 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error) {
       console.error("Delete cruise error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Cruise Forms routes (protected)
+  app.get("/api/cruises/:id/forms", requireAuth, async (req, res) => {
+    try {
+      const forms = await storage.getCruiseForms(param(req, "id"));
+      res.json(forms);
+    } catch (error) {
+      console.error("Get cruise forms error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/cruises/:id/forms", requireAuth, async (req, res) => {
+    try {
+      const parseResult = cruiseFormCreateSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: parseResult.error.errors[0]?.message ?? "Validation error" });
+      }
+
+      const { templateId, label, stage, isActive } = parseResult.data;
+      const cruiseId = param(req, "id");
+
+      // Verify cruise exists
+      const cruise = await storage.getCruise(cruiseId);
+      if (!cruise) {
+        return res.status(404).json({ error: "Cruise not found" });
+      }
+
+      // Verify template exists
+      const template = await storage.getTemplate(templateId);
+      if (!template) {
+        return res.status(400).json({ error: "Template not found" });
+      }
+
+      // Get current forms to determine sortOrder
+      const existingForms = await storage.getCruiseForms(cruiseId);
+      const sortOrder = existingForms.length;
+
+      // Generate unique shareId
+      const shareId = randomBytes(8).toString("hex");
+
+      const form = await storage.createCruiseForm({
+        cruiseId,
+        templateId,
+        label,
+        stage,
+        sortOrder,
+        isActive: isActive !== false,
+        shareId,
+      });
+
+      await audit(req, "cruise_form.create", "cruise_form", form.id, { cruiseId, label });
+      res.status(201).json(form);
+    } catch (error) {
+      console.error("Create cruise form error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/cruises/:id/forms/:formId", requireAuth, async (req, res) => {
+    try {
+      const parseResult = cruiseFormUpdateSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: parseResult.error.errors[0]?.message ?? "Validation error" });
+      }
+
+      const form = await storage.updateCruiseForm(param(req, "formId"), parseResult.data);
+      if (!form) {
+        return res.status(404).json({ error: "Form not found" });
+      }
+
+      await audit(req, "cruise_form.update", "cruise_form", form.id);
+      res.json(form);
+    } catch (error) {
+      console.error("Update cruise form error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/cruises/:id/forms/:formId", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteCruiseForm(param(req, "formId"));
+      await audit(req, "cruise_form.delete", "cruise_form", param(req, "formId"));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete cruise form error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -749,19 +872,43 @@ export async function registerRoutes(
     }
   });
 
-  // Public form routes - now for cruises
+  // Public form routes - now for cruises (with cruise form support)
   app.get("/api/forms/:shareId", async (req, res) => {
     try {
-      // First try to find a cruise with this shareId
-      const cruise = await storage.getCruiseByShareId(param(req, "shareId"));
+      const shareId = param(req, "shareId");
+
+      // 1. Check cruise_forms table for shareId
+      const cruiseForm = await storage.getCruiseFormByShareId(shareId);
+      if (cruiseForm) {
+        const cruise = await storage.getCruise(cruiseForm.cruiseId);
+        if (!cruise?.isPublished || !cruise?.isActive || !cruiseForm.isActive) {
+          return res.status(404).json({ error: "This form is not currently available", notAvailable: true });
+        }
+        const template = await storage.getTemplate(cruiseForm.templateId);
+        if (template) {
+          const inventory = await storage.getCruiseInventory(cruise.id);
+          return res.json({
+            ...template,
+            cruise,
+            cruiseForm,
+            inventory: inventory.map(item => ({
+              stepId: item.stepId,
+              choiceId: item.choiceId,
+              remaining: item.stockLimit ? Math.max(0, item.stockLimit - item.totalOrdered) : null,
+              isSoldOut: item.stockLimit ? item.totalOrdered >= item.stockLimit : false,
+            }))
+          });
+        }
+      }
+
+      // 2. Fall back to cruise shareId
+      const cruise = await storage.getCruiseByShareId(shareId);
       if (cruise) {
-        // Check if cruise is published and active
         if (!cruise.isPublished || !cruise.isActive) {
           return res.status(404).json({ error: "This cruise is not currently available", notAvailable: true });
         }
         const template = await storage.getTemplate(cruise.templateId);
         if (template) {
-          // Get inventory for stock limit enforcement
           const inventory = await storage.getCruiseInventory(cruise.id);
           return res.json({
             ...template,
@@ -776,8 +923,8 @@ export async function registerRoutes(
         }
       }
 
-      // Fall back to template shareId (legacy support)
-      const template = await storage.getTemplateByShareId(param(req, "shareId"));
+      // 3. Fall back to template shareId (legacy support)
+      const template = await storage.getTemplateByShareId(shareId);
       if (!template || !template.published) {
         return res.status(404).json({ error: "Form not found" });
       }
@@ -791,11 +938,27 @@ export async function registerRoutes(
   // Lightweight inventory check for active form sessions
   app.get("/api/forms/:shareId/inventory", async (req, res) => {
     try {
-      const cruise = await storage.getCruiseByShareId(param(req, "shareId"));
-      if (!cruise || !cruise.isPublished || !cruise.isActive) {
-        return res.status(404).json({ error: "Form not found" });
+      const shareId = param(req, "shareId");
+
+      // Check cruise_forms first, then fall back to cruise shareId
+      let cruiseId: string | null = null;
+
+      const cruiseForm = await storage.getCruiseFormByShareId(shareId);
+      if (cruiseForm) {
+        const cruise = await storage.getCruise(cruiseForm.cruiseId);
+        if (!cruise || !cruise.isPublished || !cruise.isActive || !cruiseForm.isActive) {
+          return res.status(404).json({ error: "Form not found" });
+        }
+        cruiseId = cruise.id;
+      } else {
+        const cruise = await storage.getCruiseByShareId(shareId);
+        if (!cruise || !cruise.isPublished || !cruise.isActive) {
+          return res.status(404).json({ error: "Form not found" });
+        }
+        cruiseId = cruise.id;
       }
-      const inventory = await storage.getCruiseInventory(cruise.id);
+
+      const inventory = await storage.getCruiseInventory(cruiseId);
       res.json({
         inventory: inventory.map(item => ({
           stepId: item.stepId,
@@ -820,21 +983,35 @@ export async function registerRoutes(
 
       let templateId: string;
       let cruiseId: string | null = null;
+      let cruiseFormId: string | null = null;
+      const shareId = param(req, "shareId");
 
-      // Check if this is a cruise form
-      const cruise = await storage.getCruiseByShareId(param(req, "shareId"));
-      if (cruise && cruise.isActive && cruise.isPublished) {
-        templateId = cruise.templateId;
-        cruiseId = cruise.id;
-      } else if (cruise && (!cruise.isActive || !cruise.isPublished)) {
-        return res.status(404).json({ error: "This cruise is not currently available" });
-      } else {
-        // Fall back to template shareId
-        const template = await storage.getTemplateByShareId(param(req, "shareId"));
-        if (!template || !template.published) {
-          return res.status(404).json({ error: "Form not found" });
+      // 1. Check cruise_forms table first
+      const cruiseForm = await storage.getCruiseFormByShareId(shareId);
+      if (cruiseForm) {
+        const cruise = await storage.getCruise(cruiseForm.cruiseId);
+        if (!cruise || !cruise.isActive || !cruise.isPublished || !cruiseForm.isActive) {
+          return res.status(404).json({ error: "This form is not currently available" });
         }
-        templateId = template.id;
+        templateId = cruiseForm.templateId;
+        cruiseId = cruise.id;
+        cruiseFormId = cruiseForm.id;
+      } else {
+        // 2. Check cruise shareId
+        const cruise = await storage.getCruiseByShareId(shareId);
+        if (cruise && cruise.isActive && cruise.isPublished) {
+          templateId = cruise.templateId;
+          cruiseId = cruise.id;
+        } else if (cruise && (!cruise.isActive || !cruise.isPublished)) {
+          return res.status(404).json({ error: "This cruise is not currently available" });
+        } else {
+          // 3. Fall back to template shareId
+          const template = await storage.getTemplateByShareId(shareId);
+          if (!template || !template.published) {
+            return res.status(404).json({ error: "Form not found" });
+          }
+          templateId = template.id;
+        }
       }
 
       const parseResult = submissionSchema.safeParse(req.body);
@@ -868,6 +1045,7 @@ export async function registerRoutes(
       const submission = await storage.createSubmission({
         templateId,
         cruiseId,
+        cruiseFormId,
         answers,
         customerName: customerName || null,
         customerPhone: customerPhone || null,
