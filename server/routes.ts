@@ -467,7 +467,25 @@ export async function registerRoutes(
       const search = (req.query.search as string) || undefined;
 
       const result = await storage.getCruisesPaginated({ page, limit, search });
-      res.json(result);
+
+      // Attach forms with per-form stats for each cruise
+      const dataWithForms = await Promise.all(
+        result.data.map(async (cruise) => {
+          const forms = await storage.getCruiseForms(cruise.id);
+          const formStats = await storage.getFormSubmissionStats(cruise.id);
+          const formsWithStats = forms.map(form => {
+            const stats = formStats.find(s => s.cruiseFormId === form.id);
+            return {
+              ...form,
+              submissionCount: stats?.submissionCount || 0,
+              unviewedCount: stats?.unviewedCount || 0,
+            };
+          });
+          return { ...cruise, forms: formsWithStats };
+        })
+      );
+
+      res.json({ ...result, data: dataWithForms });
     } catch (error) {
       console.error("Get cruises error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -483,7 +501,19 @@ export async function registerRoutes(
       const submissionCount = await storage.getSubmissionCountByCruise(cruise.id);
       const unviewedCount = await storage.getUnviewedSubmissionCount(cruise.id);
       const forms = await storage.getCruiseForms(cruise.id);
-      res.json({ ...cruise, submissionCount, unviewedCount, forms });
+      const formStats = await storage.getFormSubmissionStats(cruise.id);
+
+      // Merge stats into forms
+      const formsWithStats = forms.map(form => {
+        const stats = formStats.find(s => s.cruiseFormId === form.id);
+        return {
+          ...form,
+          submissionCount: stats?.submissionCount || 0,
+          unviewedCount: stats?.unviewedCount || 0,
+        };
+      });
+
+      res.json({ ...cruise, submissionCount, unviewedCount, forms: formsWithStats });
     } catch (error) {
       console.error("Get cruise error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -720,6 +750,33 @@ export async function registerRoutes(
     }
   });
 
+  // Per-form submission stats
+  app.get("/api/cruises/:id/forms/stats", requireAuth, async (req, res) => {
+    try {
+      const cruiseId = param(req, "id");
+      const stats = await storage.getFormSubmissionStats(cruiseId);
+      res.json(stats);
+    } catch (error) {
+      console.error("Get form submission stats error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Per-form submissions (paginated)
+  app.get("/api/cruises/:id/forms/:formId/submissions", requireAuth, async (req, res) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const search = (req.query.search as string) || undefined;
+
+      const result = await storage.getSubmissionsByFormPaginated(param(req, "formId"), { page, limit, search });
+      res.json(result);
+    } catch (error) {
+      console.error("Get form submissions error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Cruise inventory routes
   app.get("/api/cruises/:id/inventory", requireAuth, async (req, res) => {
     try {
@@ -808,7 +865,6 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Cruise not found" });
       }
 
-      const template = await storage.getTemplate(cruise.templateId);
       const allSubmissions = await storage.getSubmissionsByCruise(param(req, "id"));
 
       if (allSubmissions.length === 0) {
@@ -825,13 +881,23 @@ export async function registerRoutes(
         }
       }
 
-      // Build step label map from template graph
+      // Build step label map from ALL templates used by this cruise's forms
       const stepLabels: Record<string, string> = {};
-      if (template?.graph?.steps) {
-        for (const [id, step] of Object.entries(template.graph.steps)) {
-          stepLabels[id] = step.question || id;
+      const forms = await storage.getCruiseForms(cruise.id);
+      const templateIds = Array.from(new Set([cruise.templateId, ...forms.map(f => f.templateId)]));
+      for (const tid of templateIds) {
+        const tmpl = await storage.getTemplate(tid);
+        if (tmpl?.graph?.steps) {
+          for (const [id, step] of Object.entries(tmpl.graph.steps)) {
+            if (!stepLabels[id]) {
+              stepLabels[id] = step.question || id;
+            }
+          }
         }
       }
+
+      // Build form label lookup for the "Form" column
+      const formLabelMap = new Map(forms.map(f => [f.id, f.label]));
 
       // Build CSV header
       const orderedStepIds = Array.from(stepIds);
@@ -839,6 +905,7 @@ export async function registerRoutes(
         "Submission ID",
         "Customer Name",
         "Customer Phone",
+        "Form",
         "Submitted At",
         ...orderedStepIds.map(id => stepLabels[id] || id),
       ];
@@ -850,6 +917,7 @@ export async function registerRoutes(
           sub.id,
           sub.customerName || "",
           sub.customerPhone || "",
+          sub.cruiseFormId ? (formLabelMap.get(sub.cruiseFormId) || "Unknown") : "Default",
           sub.createdAt ? new Date(sub.createdAt).toISOString() : "",
         ];
 
@@ -1073,7 +1141,7 @@ export async function registerRoutes(
         "submission.create",
         "submission",
         submission.id,
-        { cruiseId, customerName: customerName || null, customerPhone }
+        { cruiseId, cruiseFormId, customerName: customerName || null, customerPhone }
       );
 
       res.status(201).json(submission);

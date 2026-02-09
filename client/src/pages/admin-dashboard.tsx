@@ -32,18 +32,25 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Ship, Plus, MoreVertical, Edit, Copy, Trash2, Eye, 
-  ExternalLink, Search, ClipboardList, LogOut, Loader2, Anchor, Bell, Users, X, ChevronRight
+import {
+  Ship, Plus, MoreVertical, Edit, Copy, Trash2, Eye,
+  ExternalLink, Search, ClipboardList, LogOut, Loader2, Anchor, Bell, Users, X, ChevronRight, FileText, BarChart3
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Template, Cruise } from "@shared/schema";
+import type { Template, Cruise, CruiseForm } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
+
+type CruiseFormWithStats = CruiseForm & {
+  submissionCount: number;
+  unviewedCount: number;
+};
 
 type CruiseWithCounts = Cruise & {
   submissionCount: number;
   unviewedCount: number;
+  forms?: CruiseFormWithStats[];
 };
 
 export default function AdminDashboard() {
@@ -465,6 +472,46 @@ export default function AdminDashboard() {
               </Dialog>
             </div>
 
+            {/* Summary stats */}
+            {cruises && cruises.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                <div className="bg-card border rounded-xl p-4">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                    <Anchor className="w-4 h-4" />
+                    <span className="text-xs font-medium uppercase tracking-wider">Cruises</span>
+                  </div>
+                  <p className="text-2xl font-bold">{cruises.length}</p>
+                </div>
+                <div className="bg-card border rounded-xl p-4">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                    <FileText className="w-4 h-4" />
+                    <span className="text-xs font-medium uppercase tracking-wider">Total Forms</span>
+                  </div>
+                  <p className="text-2xl font-bold">
+                    {cruises.reduce((sum, c) => sum + (c.forms?.length || 0), 0)}
+                  </p>
+                </div>
+                <div className="bg-card border rounded-xl p-4">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                    <Users className="w-4 h-4" />
+                    <span className="text-xs font-medium uppercase tracking-wider">Total Signups</span>
+                  </div>
+                  <p className="text-2xl font-bold">
+                    {cruises.reduce((sum, c) => sum + (c.submissionCount || 0), 0)}
+                  </p>
+                </div>
+                <div className="bg-card border rounded-xl p-4">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                    <Bell className="w-4 h-4" />
+                    <span className="text-xs font-medium uppercase tracking-wider">Unread</span>
+                  </div>
+                  <p className={`text-2xl font-bold ${cruises.reduce((sum, c) => sum + (c.unviewedCount || 0), 0) > 0 ? "text-destructive" : ""}`}>
+                    {cruises.reduce((sum, c) => sum + (c.unviewedCount || 0), 0)}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="mb-6">
               <div className="relative max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -524,7 +571,8 @@ export default function AdminDashboard() {
                           <div className="flex items-center gap-2 mb-1">
                             <CardTitle className="text-lg truncate">{cruise.name}</CardTitle>
                             {cruise.unviewedCount > 0 && (
-                              <Badge variant="destructive" className="text-xs">
+                              <Badge variant="destructive" className="text-xs animate-pulse">
+                                <Bell className="w-3 h-3 mr-1" />
                                 {cruise.unviewedCount} new
                               </Badge>
                             )}
@@ -551,11 +599,16 @@ export default function AdminDashboard() {
                         </DropdownMenu>
                       </div>
                     </CardHeader>
-                    <CardContent>
-                      <div className="flex items-center gap-4 flex-wrap text-sm text-muted-foreground mb-3">
+                    <CardContent className="space-y-3">
+                      {/* Stats row */}
+                      <div className="flex items-center gap-4 flex-wrap text-sm text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Users className="w-4 h-4" />
                           {cruise.submissionCount} signups
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <FileText className="w-4 h-4" />
+                          {cruise.forms?.length || 0} form{(cruise.forms?.length || 0) !== 1 ? "s" : ""}
                         </div>
                         {cruise.isPublished ? (
                           <Badge variant="default" className="bg-green-600">Published</Badge>
@@ -566,7 +619,30 @@ export default function AdminDashboard() {
                           <Badge variant="outline">Inactive</Badge>
                         )}
                       </div>
-                      {/* Inline quick actions */}
+
+                      {/* Per-form breakdown */}
+                      {cruise.forms && cruise.forms.length > 0 && (
+                        <div className="bg-muted/40 rounded-lg p-2.5 space-y-1.5">
+                          {cruise.forms.map((form) => (
+                            <div key={form.id} className="flex items-center gap-2 text-xs">
+                              <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                form.isActive ? "bg-green-500" : "bg-muted-foreground/40"
+                              }`} />
+                              <span className="font-medium truncate flex-1">{form.label}</span>
+                              <span className="text-muted-foreground flex-shrink-0">
+                                {form.submissionCount}
+                              </span>
+                              {form.unviewedCount > 0 && (
+                                <span className="bg-destructive text-destructive-foreground text-[10px] font-bold px-1.5 py-0 rounded-full flex-shrink-0">
+                                  {form.unviewedCount}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Quick actions */}
                       <div className="flex items-center gap-2 pt-2 border-t" onClick={(e) => e.stopPropagation()}>
                         <Button
                           variant="ghost"
