@@ -35,6 +35,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Ship, Copy, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Upload, Trash2, Info, Eye, ClipboardList, Plus, ExternalLink, Pencil, FileText, Bell, Download
+import { 
+  Ship, Users, Package, Edit, Loader2, Save, Phone, User, Image, ChevronLeft, ChevronRight, Upload, Trash2, Info, Eye, ClipboardList, Plus, ExternalLink, Pencil, Share2
 } from "lucide-react";
 import {
   Select,
@@ -326,13 +328,23 @@ export default function CruiseDetail() {
     },
   });
 
-  const copyFormLink = async (shareId: string) => {
+  const shareFormLink = async (shareId: string, label: string) => {
     const url = `${window.location.origin}/form/${shareId}`;
     try {
-      await navigator.clipboard.writeText(url);
-      toast({ title: "Link copied", description: "The form link has been copied to your clipboard." });
-    } catch {
-      toast({ title: "Copy failed", description: "Could not copy to clipboard.", variant: "destructive" });
+      if (navigator.share) {
+        await navigator.share({
+          title: `${cruise?.name} - ${label}`,
+          text: `Sign up for ${cruise?.name}`,
+          url,
+        });
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast({ title: "Link copied", description: "Share link copied to clipboard." });
+      }
+    } catch (err: any) {
+      // User cancelled the share dialog - not an error
+      if (err?.name === "AbortError") return;
+      toast({ title: "Share failed", description: "Could not share the link.", variant: "destructive" });
     }
   };
 
@@ -438,23 +450,6 @@ export default function CruiseDetail() {
     return null;
   }
 
-  const copyShareLink = async () => {
-    if (!cruise) return;
-    const url = `${window.location.origin}/form/${cruise.shareId}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast({
-        title: "Link copied",
-        description: "The shareable link has been copied to your clipboard.",
-      });
-    } catch {
-      toast({
-        title: "Copy failed",
-        description: "Could not copy to clipboard.",
-        variant: "destructive",
-      });
-    }
-  };
 
   const startEditing = () => {
     if (cruise) {
@@ -546,10 +541,6 @@ export default function CruiseDetail() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <ThemeToggle />
-            <Button variant="outline" onClick={copyShareLink} className="gap-2" data-testid="button-copy-link">
-              <Copy className="w-4 h-4" />
-              <span className="hidden sm:inline">Copy Link</span>
-            </Button>
             <Button 
               variant="outline" 
               onClick={() => setLocation(`/admin/preview/${cruise.templateId}?cruise=${cruise.id}`)} 
@@ -669,13 +660,14 @@ export default function CruiseDetail() {
                             </div>
                             <div className="flex items-center gap-1 flex-shrink-0">
                               <Button
-                                variant="ghost"
+                                variant="default"
                                 size="icon"
-                                onClick={() => copyFormLink(form.shareId)}
-                                title="Copy form link"
-                                data-testid={`button-copy-form-link-${form.id}`}
+                                className="h-10 w-10 rounded-full"
+                                onClick={() => shareFormLink(form.shareId, form.label)}
+                                title="Share form"
+                                data-testid={`button-share-form-${form.id}`}
                               >
-                                <Copy className="w-4 h-4" />
+                                <Share2 className="w-5 h-5" />
                               </Button>
                               <Link href={`/admin/builder/${form.templateId}?from=cruise-${id}`}>
                                 <Button

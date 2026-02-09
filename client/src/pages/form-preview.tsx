@@ -31,6 +31,8 @@ export default function FormPreview() {
   const [history, setHistory] = useState<string[]>([]);
   const [isReview, setIsReview] = useState(false);
   const [showInfoPopup, setShowInfoPopup] = useState(false);
+  const [showInfoTooltip, setShowInfoTooltip] = useState(false);
+  const hasShownInfoTooltip = useRef(false);
 
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
   const liveRegionRef = useRef<HTMLDivElement>(null);
@@ -164,6 +166,16 @@ export default function FormPreview() {
       announce(`Step ${currentStepIndex + 1} of ${orderedSteps.length}: ${currentStep.question}`);
     }
   }, [currentStepId, isReview, currentStep, currentStepIndex, orderedSteps.length, announce]);
+
+  // Show info tooltip once on first info-enabled step
+  useEffect(() => {
+    if (currentStep?.infoPopup?.enabled && !hasShownInfoTooltip.current) {
+      hasShownInfoTooltip.current = true;
+      setShowInfoTooltip(true);
+      const timer = setTimeout(() => setShowInfoTooltip(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep]);
 
   if (authLoading) {
     return (
@@ -515,29 +527,32 @@ export default function FormPreview() {
           ) : currentStep ? (
             <>
               {currentStep.infoPopup?.enabled && (
-                <>
-                  <div className="fixed top-20 right-4 z-50">
+                <StepInfoPopup
+                  infoPopup={currentStep.infoPopup}
+                  open={showInfoPopup}
+                  onOpenChange={setShowInfoPopup}
+                />
+              )}
+              <Card className="relative">
+                <CardHeader>
+                  <CardTitle ref={stepHeadingRef} tabIndex={-1} className="text-lg outline-none pr-12">{currentStep.question}</CardTitle>
+                </CardHeader>
+                {currentStep.infoPopup?.enabled && (
+                  <div className="absolute top-3 right-3 flex items-center gap-2">
+                    <div className={`text-xs bg-popover border rounded-md px-2 py-1 shadow-md transition-opacity duration-700 whitespace-nowrap ${showInfoTooltip ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                      Tap for more info
+                    </div>
                     <Button
                       size="icon"
                       onClick={() => setShowInfoPopup(true)}
-                      className="rounded-full shadow-lg animate-pulse"
+                      className="rounded-full shadow-lg shrink-0"
                       aria-label="More information about this question"
                       data-testid="button-step-info"
                     >
                       <Info className="w-5 h-5" aria-hidden="true" />
                     </Button>
                   </div>
-                  <StepInfoPopup
-                    infoPopup={currentStep.infoPopup}
-                    open={showInfoPopup}
-                    onOpenChange={setShowInfoPopup}
-                  />
-                </>
-              )}
-              <Card>
-                <CardHeader>
-                  <CardTitle ref={stepHeadingRef} tabIndex={-1} className="text-lg outline-none">{currentStep.question}</CardTitle>
-                </CardHeader>
+                )}
                 <CardContent className="space-y-4">
                 {currentStep.type === "text" ? (
                   <>
