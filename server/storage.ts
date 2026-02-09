@@ -14,6 +14,10 @@ import {
 import { db } from "./db";
 import { eq, sql, and, isNull, ilike, or, desc } from "drizzle-orm";
 
+function escapeLike(value: string): string {
+  return value.replace(/[%_\\]/g, '\\$&');
+}
+
 export interface PaginationParams {
   page?: number;
   limit?: number;
