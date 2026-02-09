@@ -100,6 +100,8 @@ export default function PublicForm() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [showPhoneInput, setShowPhoneInput] = useState(false);
   const [showInfoPopup, setShowInfoPopup] = useState(false);
+  const [showInfoTooltip, setShowInfoTooltip] = useState(false);
+  const hasShownInfoTooltip = useRef(false);
 
   // Draft persistence state
   const [pendingDraft, setPendingDraft] = useState<FormDraft | null>(null);
@@ -332,6 +334,16 @@ export default function PublicForm() {
       refreshInventory();
     }
   }, [currentStepId, graph, refreshInventory]);
+
+  // Show info tooltip once on first info-enabled step
+  useEffect(() => {
+    if (currentStep?.infoPopup?.enabled && !hasShownInfoTooltip.current) {
+      hasShownInfoTooltip.current = true;
+      setShowInfoTooltip(true);
+      const timer = setTimeout(() => setShowInfoTooltip(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep]);
 
   const checkStockIssues = useCallback((freshInventory: InventoryStatus[]): string[] => {
     const issues: string[] = [];
@@ -992,35 +1004,38 @@ export default function PublicForm() {
           ) : currentStep ? (
             <>
               {currentStep.infoPopup?.enabled && (
-                <>
-                  <div className="fixed top-20 right-4 z-50">
+                <StepInfoPopup
+                  infoPopup={currentStep.infoPopup}
+                  open={showInfoPopup}
+                  onOpenChange={setShowInfoPopup}
+                />
+              )}
+              <Card className="relative shadow-md border-border/50">
+                <CardHeader>
+                  <CardTitle
+                    ref={stepHeadingRef}
+                    tabIndex={-1}
+                    className="font-serif text-xl outline-none pr-12"
+                  >
+                    {currentStep.question}
+                  </CardTitle>
+                </CardHeader>
+                {currentStep.infoPopup?.enabled && (
+                  <div className="absolute top-3 right-3 flex items-center gap-2">
+                    <div className={`text-xs bg-popover border rounded-md px-2 py-1 shadow-md transition-opacity duration-700 whitespace-nowrap ${showInfoTooltip ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                      Tap for more info
+                    </div>
                     <Button
                       size="icon"
                       onClick={() => setShowInfoPopup(true)}
-                      className="rounded-full shadow-lg animate-pulse"
+                      className="rounded-full shadow-lg shrink-0"
                       aria-label="More information about this question"
                       data-testid="button-step-info"
                     >
                       <Info className="w-5 h-5" aria-hidden="true" />
                     </Button>
                   </div>
-                  <StepInfoPopup
-                    infoPopup={currentStep.infoPopup}
-                    open={showInfoPopup}
-                    onOpenChange={setShowInfoPopup}
-                  />
-                </>
-              )}
-              <Card className="shadow-md border-border/50">
-                <CardHeader>
-                  <CardTitle
-                    ref={stepHeadingRef}
-                    tabIndex={-1}
-                    className="font-serif text-xl outline-none"
-                  >
-                    {currentStep.question}
-                  </CardTitle>
-                </CardHeader>
+                )}
                 <CardContent className="space-y-4">
                 {currentStep.type === "text" ? (
                   <>
