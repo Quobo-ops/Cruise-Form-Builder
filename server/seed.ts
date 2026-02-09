@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { users, templates } from "@shared/schema";
+import { users, templates, type FormGraph } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
@@ -12,7 +12,8 @@ export async function seedDatabase() {
     
     if (!existingAdmin) {
       console.log("Creating admin user...");
-      const hashedPassword = await bcrypt.hash("LumiSade2026!", SALT_ROUNDS);
+      const adminPassword = process.env.ADMIN_PASSWORD || "LumiSade2026!";
+      const hashedPassword = await bcrypt.hash(adminPassword, SALT_ROUNDS);
       await db.insert(users).values({
         username: "EloiseDavid",
         password: hashedPassword,
@@ -175,7 +176,7 @@ export async function seedDatabase() {
               submitButtonText: "Submit Form",
             },
           },
-        },
+        } satisfies FormGraph,
       });
 
       console.log("Sample templates created");
