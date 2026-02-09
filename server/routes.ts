@@ -17,6 +17,12 @@ declare module "express-session" {
   }
 }
 
+/** Extract a route param as a single string (Express 5 types params as string | string[]). */
+function param(req: Request, name: string): string {
+  const v = req.params[name];
+  return Array.isArray(v) ? v[0] : v;
+}
+
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   if (!req.session.userId) {
     return res.status(401).json({ error: "Unauthorized" });
@@ -225,7 +231,7 @@ export async function registerRoutes(
 
       const parseResult = loginSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ error: parseResult.error.errors[0].message });
+        return res.status(400).json({ error: parseResult.error.errors[0]?.message ?? "Validation error" });
       }
 
       const { username, password } = parseResult.data;
@@ -285,7 +291,7 @@ export async function registerRoutes(
   // Public learn more page for a cruise
   app.get("/api/public/cruises/:shareId/learn-more", async (req, res) => {
     try {
-      const cruise = await storage.getCruiseByShareId(req.params.shareId);
+      const cruise = await storage.getCruiseByShareId(param(req, "shareId"));
       if (!cruise || !cruise.isPublished) {
         return res.status(404).json({ error: "Cruise not found" });
       }
@@ -316,7 +322,7 @@ export async function registerRoutes(
 
   app.get("/api/templates/:id", requireAuth, async (req, res) => {
     try {
-      const template = await storage.getTemplate(req.params.id);
+      const template = await storage.getTemplate(param(req, "id"));
       if (!template) {
         return res.status(404).json({ error: "Template not found" });
       }
@@ -331,7 +337,7 @@ export async function registerRoutes(
     try {
       const parseResult = templateCreateSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ error: parseResult.error.errors[0].message });
+        return res.status(400).json({ error: parseResult.error.errors[0]?.message ?? "Validation error" });
       }
 
       const { name, graph, published, shareId } = parseResult.data;
@@ -353,11 +359,11 @@ export async function registerRoutes(
     try {
       const parseResult = templateUpdateSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ error: parseResult.error.errors[0].message });
+        return res.status(400).json({ error: parseResult.error.errors[0]?.message ?? "Validation error" });
       }
 
       const { name, graph, published, shareId } = parseResult.data;
-      const template = await storage.updateTemplate(req.params.id, {
+      const template = await storage.updateTemplate(param(req, "id"), {
         ...(name !== undefined && { name }),
         ...(graph !== undefined && { graph }),
         ...(published !== undefined && { published }),
@@ -377,8 +383,8 @@ export async function registerRoutes(
 
   app.delete("/api/templates/:id", requireAuth, async (req, res) => {
     try {
-      await storage.deleteTemplate(req.params.id);
-      await audit(req, "template.delete", "template", req.params.id);
+      await storage.deleteTemplate(param(req, "id"));
+      await audit(req, "template.delete", "template", param(req, "id"));
       res.json({ success: true });
     } catch (error: any) {
       if (error.message?.includes("Cannot delete template")) {
@@ -391,7 +397,7 @@ export async function registerRoutes(
 
   app.post("/api/templates/:id/duplicate", requireAuth, async (req, res) => {
     try {
-      const original = await storage.getTemplate(req.params.id);
+      const original = await storage.getTemplate(param(req, "id"));
       if (!original) {
         return res.status(404).json({ error: "Template not found" });
       }
@@ -402,7 +408,7 @@ export async function registerRoutes(
         published: false,
         shareId: null,
       });
-      await audit(req, "template.duplicate", "template", duplicate.id, { sourceId: req.params.id });
+      await audit(req, "template.duplicate", "template", duplicate.id, { sourceId: param(req, "id") });
       res.status(201).json(duplicate);
     } catch (error) {
       console.error("Duplicate template error:", error);
@@ -412,19 +418,19 @@ export async function registerRoutes(
 
   app.post("/api/templates/:id/publish", requireAuth, async (req, res) => {
     try {
-      const template = await storage.getTemplate(req.params.id);
+      const template = await storage.getTemplate(param(req, "id"));
       if (!template) {
         return res.status(404).json({ error: "Template not found" });
       }
 
       const shareId = template.shareId || randomBytes(8).toString("hex");
 
-      const updated = await storage.updateTemplate(req.params.id, {
+      const updated = await storage.updateTemplate(param(req, "id"), {
         published: true,
         shareId,
       });
 
-      await audit(req, "template.publish", "template", req.params.id);
+      await audit(req, "template.publish", "template", param(req, "id"));
       res.json({ shareId, template: updated });
     } catch (error) {
       console.error("Publish template error:", error);
@@ -449,7 +455,7 @@ export async function registerRoutes(
 
   app.get("/api/cruises/:id", requireAuth, async (req, res) => {
     try {
-      const cruise = await storage.getCruise(req.params.id);
+      const cruise = await storage.getCruise(param(req, "id"));
       if (!cruise) {
         return res.status(404).json({ error: "Cruise not found" });
       }
@@ -466,7 +472,7 @@ export async function registerRoutes(
     try {
       const parseResult = cruiseCreateSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ error: parseResult.error.errors[0].message });
+        return res.status(400).json({ error: parseResult.error.errors[0]?.message ?? "Validation error" });
       }
 
       const { name, description, startDate, endDate, templateId, isActive, isPublished } = parseResult.data;
@@ -536,12 +542,12 @@ export async function registerRoutes(
     try {
       const parseResult = cruiseUpdateSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ error: parseResult.error.errors[0].message });
+        return res.status(400).json({ error: parseResult.error.errors[0]?.message ?? "Validation error" });
       }
 
       const { name, description, startDate, endDate, templateId, isActive, isPublished, learnMoreHeader, learnMoreImages, learnMoreDescription } = parseResult.data;
 
-      const cruise = await storage.updateCruise(req.params.id, {
+      const cruise = await storage.updateCruise(param(req, "id"), {
         ...(name !== undefined && { name }),
         ...(description !== undefined && { description }),
         ...(startDate !== undefined && { startDate: startDate ? new Date(startDate) : null }),
@@ -567,8 +573,8 @@ export async function registerRoutes(
 
   app.delete("/api/cruises/:id", requireAuth, async (req, res) => {
     try {
-      await storage.deleteCruise(req.params.id);
-      await audit(req, "cruise.delete", "cruise", req.params.id);
+      await storage.deleteCruise(param(req, "id"));
+      await audit(req, "cruise.delete", "cruise", param(req, "id"));
       res.json({ success: true });
     } catch (error) {
       console.error("Delete cruise error:", error);
@@ -579,7 +585,7 @@ export async function registerRoutes(
   // Cruise inventory routes
   app.get("/api/cruises/:id/inventory", requireAuth, async (req, res) => {
     try {
-      const inventory = await storage.getCruiseInventory(req.params.id);
+      const inventory = await storage.getCruiseInventory(param(req, "id"));
       res.json(inventory);
     } catch (error) {
       console.error("Get cruise inventory error:", error);
@@ -591,14 +597,14 @@ export async function registerRoutes(
     try {
       const parseResult = inventoryLimitUpdateSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ error: parseResult.error.errors[0].message });
+        return res.status(400).json({ error: parseResult.error.errors[0]?.message ?? "Validation error" });
       }
 
       const { stepId, choiceId, limit } = parseResult.data;
 
       // Validate that new limit is not below current orders
       if (limit !== null) {
-        const item = await storage.getInventoryItem(req.params.id, stepId, choiceId);
+        const item = await storage.getInventoryItem(param(req, "id"), stepId, choiceId);
         if (item && limit < item.totalOrdered) {
           return res.status(400).json({
             error: `Cannot set limit to ${limit}. Already ${item.totalOrdered} ordered.`
@@ -606,8 +612,8 @@ export async function registerRoutes(
         }
       }
 
-      await storage.updateInventoryLimit(req.params.id, stepId, choiceId, limit);
-      await audit(req, "inventory.update_limit", "cruise_inventory", req.params.id, { stepId, choiceId, limit });
+      await storage.updateInventoryLimit(param(req, "id"), stepId, choiceId, limit);
+      await audit(req, "inventory.update_limit", "cruise_inventory", param(req, "id"), { stepId, choiceId, limit });
       res.json({ success: true });
     } catch (error) {
       console.error("Update inventory limit error:", error);
@@ -622,9 +628,9 @@ export async function registerRoutes(
       const limit = parseInt(req.query.limit as string) || 20;
       const search = (req.query.search as string) || undefined;
 
-      const result = await storage.getSubmissionsByCruisePaginated(req.params.id, { page, limit, search });
+      const result = await storage.getSubmissionsByCruisePaginated(param(req, "id"), { page, limit, search });
       // Mark as viewed
-      await storage.markSubmissionsViewed(req.params.id);
+      await storage.markSubmissionsViewed(param(req, "id"));
       res.json(result);
     } catch (error) {
       console.error("Get cruise submissions error:", error);
@@ -635,13 +641,13 @@ export async function registerRoutes(
   // CSV export for cruise submissions
   app.get("/api/cruises/:id/submissions/export", requireAuth, async (req, res) => {
     try {
-      const cruise = await storage.getCruise(req.params.id);
+      const cruise = await storage.getCruise(param(req, "id"));
       if (!cruise) {
         return res.status(404).json({ error: "Cruise not found" });
       }
 
       const template = await storage.getTemplate(cruise.templateId);
-      const allSubmissions = await storage.getSubmissionsByCruise(req.params.id);
+      const allSubmissions = await storage.getSubmissionsByCruise(param(req, "id"));
 
       if (allSubmissions.length === 0) {
         return res.status(404).json({ error: "No submissions to export" });
@@ -708,7 +714,7 @@ export async function registerRoutes(
       const csvContent = rows.join("\n");
       const filename = `${cruise.name.replace(/[^a-zA-Z0-9]/g, "_")}_submissions_${new Date().toISOString().split("T")[0]}.csv`;
 
-      await audit(req, "submission.export", "cruise", req.params.id, { count: allSubmissions.length, format: "csv" });
+      await audit(req, "submission.export", "cruise", param(req, "id"), { count: allSubmissions.length, format: "csv" });
 
       res.setHeader("Content-Type", "text/csv");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -723,7 +729,7 @@ export async function registerRoutes(
   app.get("/api/forms/:shareId", async (req, res) => {
     try {
       // First try to find a cruise with this shareId
-      const cruise = await storage.getCruiseByShareId(req.params.shareId);
+      const cruise = await storage.getCruiseByShareId(param(req, "shareId"));
       if (cruise) {
         // Check if cruise is published and active
         if (!cruise.isPublished || !cruise.isActive) {
@@ -747,7 +753,7 @@ export async function registerRoutes(
       }
 
       // Fall back to template shareId (legacy support)
-      const template = await storage.getTemplateByShareId(req.params.shareId);
+      const template = await storage.getTemplateByShareId(param(req, "shareId"));
       if (!template || !template.published) {
         return res.status(404).json({ error: "Form not found" });
       }
@@ -770,7 +776,7 @@ export async function registerRoutes(
       let cruiseId: string | null = null;
 
       // Check if this is a cruise form
-      const cruise = await storage.getCruiseByShareId(req.params.shareId);
+      const cruise = await storage.getCruiseByShareId(param(req, "shareId"));
       if (cruise && cruise.isActive && cruise.isPublished) {
         templateId = cruise.templateId;
         cruiseId = cruise.id;
@@ -778,7 +784,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "This cruise is not currently available" });
       } else {
         // Fall back to template shareId
-        const template = await storage.getTemplateByShareId(req.params.shareId);
+        const template = await storage.getTemplateByShareId(param(req, "shareId"));
         if (!template || !template.published) {
           return res.status(404).json({ error: "Form not found" });
         }
@@ -787,7 +793,7 @@ export async function registerRoutes(
 
       const parseResult = submissionSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ error: parseResult.error.errors[0].message });
+        return res.status(400).json({ error: parseResult.error.errors[0]?.message ?? "Validation error" });
       }
 
       const { answers, customerName, customerPhone } = parseResult.data;
@@ -879,7 +885,7 @@ export async function registerRoutes(
     try {
       const parseResult = notificationSettingsSchema.safeParse(req.body);
       if (!parseResult.success) {
-        return res.status(400).json({ error: parseResult.error.errors[0].message });
+        return res.status(400).json({ error: parseResult.error.errors[0]?.message ?? "Validation error" });
       }
 
       const settings = await storage.upsertNotificationSettings(

@@ -80,7 +80,9 @@ export const templates = pgTable("templates", {
   deletedAt: timestamp("deleted_at"),
 });
 
-export const insertTemplateSchema = createInsertSchema(templates).omit({
+export const insertTemplateSchema = createInsertSchema(templates, {
+  graph: graphSchema,
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -141,7 +143,9 @@ export const submissions = pgTable("submissions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertSubmissionSchema = createInsertSchema(submissions).omit({
+export const insertSubmissionSchema = createInsertSchema(submissions, {
+  answers: z.record(z.string(), z.union([z.string(), z.array(quantityAnswerSchema)])),
+}).omit({
   id: true,
   createdAt: true,
 });
